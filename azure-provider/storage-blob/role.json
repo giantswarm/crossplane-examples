@@ -1,0 +1,19 @@
+{
+    "Name": "mystorageaccount-access",
+    "Description": "custom role for accessing containers in mystorageaccount",
+    "AssignableScopes": [
+        "/subscriptions/[SUBSCRIPTION ID]/resourcegroups/MyResourceGroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount"
+    ],
+    "Actions": [
+        "Microsoft.Storage/storageAccounts/blobServices/containers/delete",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/write"
+    ],
+    "DataActions": [
+        "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/move/action",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action"
+    ]
+}
