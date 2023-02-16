@@ -1,0 +1,11 @@
+apiVersion: azure.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: azure-blob-storage
+spec:
+  credentials:
+    secretRef:
+      key: credentials
+      name: azure-blob-access
+      namespace: default
+    source: Secret
