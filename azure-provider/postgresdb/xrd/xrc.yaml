@@ -1,0 +1,529 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: pgsql-vnet
+  labels:
+    provider: azure
+    example: postgres-vnet
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.giantswarm.io/v1alpha1
+    kind: CompositeApdb
+  writeConnectionSecretsToNamespace: default
+  patchSets:
+  - name: metadata
+    patches:
+    - fromFieldPath: metadata.labels
+  resources:
+
+# ------------------------------------------------------------------------------
+# ResourceGroup
+# https://doc.crds.dev/github.com/upbound/provider-azure/azure.upbound.io/ResourceGroup/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqlrg
+    base:
+      apiVersion: azure.upbound.io/v1beta1
+      kind: ResourceGroup
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.location
+      toFieldPath: spec.forProvider.location
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-rg"
+
+    - fromFieldPath: spec.writeConnectionSecretToRef.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# VirtualNetwork
+# https://doc.crds.dev/github.com/upbound/provider-azure/network.azure.upbound.io/VirtualNetwork/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqlvn
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: VirtualNetwork
+      spec:
+        forProvider:
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          addressSpace: []
+        writeConnectionSecretToRef:
+          namespace: ""
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.location
+      toFieldPath: spec.forProvider.location
+
+    - fromFieldPath: spec.parameters.vnetRanges
+      toFieldPath: spec.forProvider.addressSpace
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-vnet"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# Subnet - public
+# https://doc.crds.dev/github.com/upbound/provider-azure/network.azure.upbound.io/Subnet/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqldb-public-subnet
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: Subnet
+      metadata:
+        labels:
+          access: public
+      spec:
+        forProvider:
+          addressPrefixes: []
+          privateEndpointNetworkPoliciesEnabled: true
+          privateLinkServiceNetworkPoliciesEnabled: true
+
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          virtualNetworkNameSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-public"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.subnets.public
+      toFieldPath: spec.forProvider.addressPrefixes[0]
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-pub-snet"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# Subnet - private
+# https://doc.crds.dev/github.com/upbound/provider-azure/network.azure.upbound.io/Subnet/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqldb-private-subnet
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: Subnet
+      metadata:
+        labels:
+          access: private
+      spec:
+        forProvider:
+          addressPrefixes: []
+          privateEndpointNetworkPoliciesEnabled: true
+          privateLinkServiceNetworkPoliciesEnabled: true
+
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          virtualNetworkNameSelector:
+            matchControllerRef: true
+          delegation:
+          - name: flexible-server
+            serviceDelegation:
+            - name: Microsoft.DBforPostgreSQL/flexibleServers
+              actions:
+              - Microsoft.Network/virtualNetworks/subnets/join/action
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-private"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.subnets.private
+      toFieldPath: spec.forProvider.addressPrefixes[0]
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-pri-snet"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# PrivateDNSZone
+# https://doc.crds.dev/github.com/upbound/provider-azure/network.azure.upbound.io/PrivateDNSZone/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqldb-dnszone
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: PrivateDNSZone
+      spec:
+        forProvider:
+          resourceGroupNameSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.annotations[crossplane.io/external-name]
+      transforms:
+      - type: string
+        string:
+          fmt: "%s.postgres.database.azure.com"
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-dnszone"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+# ------------------------------------------------------------------------------
+# PrivateDNSZoneVirtualNetworkLink
+# https://doc.crds.dev/github.com/upbound/provider-azure/network.azure.upbound.io/PrivateDNSZoneVirtualNetworkLink/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqldb-dnsvlink
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: PrivateDNSZoneVirtualNetworkLink
+      spec:
+        forProvider:
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          virtualNetworkIdSelector:
+            matchControllerRef: true
+          privateDnsZoneNameSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-psqlzone"
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-dnszonevlink"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+
+  - name: pgsqldb-k8svlink
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: PrivateDNSZoneVirtualNetworkLink
+      spec:
+        forProvider:
+          privateDnsZoneNameSelector:
+            matchControllerRef: true
+          resourceGroupNameSelector:
+            matchControllerRef: true
+
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-k8slink"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.remoteResourceGroup.vnetId
+      toFieldPath: spec.forProvider.virtualNetworkId
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-k8slink"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+
+# ------------------------------------------------------------------------------
+# FlexibleServer
+# https://doc.crds.dev/github.com/upbound/provider-azure/dbforpostgresql.azure.upbound.io/FlexibleServer/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqldb-server
+    base:
+      apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+      kind: FlexibleServer
+      spec:
+        forProvider:
+          administratorLogin: admin
+          administratorPasswordSecretRef: {}
+          authentication:
+          - activeDirectoryAuthEnabled: false
+            passwordAuthEnabled: true
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          privateDnsZoneIdSelector:
+            matchControllerRef: true
+          delegatedSubnetIdSelector:
+            matchControllerRef: true
+            matchLabels:
+              access: private
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-svr"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.db.admin
+      toFieldPath: spec.forProvider.administratorLogin
+
+    - fromFieldPath: spec.parameters.db.secret.key
+      toFieldPath: spec.forProvider.administratorPasswordSecretRef.key
+    - fromFieldPath: spec.parameters.db.secret.name
+      toFieldPath: spec.forProvider.administratorPasswordSecretRef.name
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.forProvider.administratorPasswordSecretRef.namespace
+
+    - fromFieldPath: spec.parameters.location
+      toFieldPath: spec.forProvider.location
+    - fromFieldPath: spec.parameters.sku
+      toFieldPath: spec.forProvider.skuName
+    - fromFieldPath: spec.parameters.db.version
+      toFieldPath: spec.forProvider.version
+    - fromFieldPath: spec.parameters.db.size
+      toFieldPath: spec.forProvider.storageMb
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-svr"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# FlexibleServerDatabase
+# https://doc.crds.dev/github.com/upbound/provider-azure/dbforpostgresql.azure.upbound.io/FlexibleServerDatabase/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: pgsqldb
+    base:
+      apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+      kind: FlexibleServerDatabase
+      spec:
+        forProvider:
+          charset: UTF8
+          collation: en_US.utf8
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          serverIdSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-db"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# FlexibleServerFirewallRule
+# https://doc.crds.dev/github.com/upbound/provider-azure/dbforpostgresql.azure.upbound.io/FlexibleServerFirewallRule/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: psqldbnr
+    base:
+      apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+      kind: FlexibleServerFirewallRule
+      spec:
+        forProvider:
+          serverIdSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.db.firewall.startAddr
+      toFieldPath: spec.forProvider.startIpAddress
+    - fromFieldPath: spec.parameters.db.firewall.endAddr
+      toFieldPath: spec.forProvider.endIpAddress
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-fsfr"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# VirtualNetworkPeering
+# Allow connections from the VNET the workload cluster is contained in
+# https://doc.crds.dev/github.com/upbound/provider-azure/network.azure.upbound.io/VirtualNetworkPeering/v1beta1@v0.26.0
+# ------------------------------------------------------------------------------
+  - name: k8saccesspsql
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: VirtualNetworkPeering
+      spec:
+        forProvider:
+          allowForwardedTraffic: false
+          allowGatewayTransit: false
+          allowVirtualNetworkAccess: true
+          resourceGroupNameSelector:
+            matchControllerRef: true
+          virtualNetworkNameSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-inbound"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.remoteResourceGroup.vnetId
+      toFieldPath: spec.forProvider.remoteVirtualNetworkId
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-k8saccess"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
+# ------------------------------------------------------------------------------
+# VirtualNetworkPeering - Reverse peering route
+# ------------------------------------------------------------------------------
+  - name: psqlaccessk8s
+    base:
+      apiVersion: network.azure.upbound.io/v1beta1
+      kind: VirtualNetworkPeering
+      spec:
+        forProvider:
+          allowForwardedTraffic: false
+          allowGatewayTransit: false
+          allowVirtualNetworkAccess: true
+          remoteVirtualNetworkIdSelector:
+            matchControllerRef: true
+    patches:
+    - fromFieldPath: spec.name
+      toFieldPath: metadata.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-outbound"
+
+    - fromFieldPath: spec.parameters.providerConfigRef
+      toFieldPath: spec.providerConfigRef.name
+
+    - fromFieldPath: spec.parameters.deletionPolicy
+      toFieldPath: spec.deletionPolicy
+
+    - fromFieldPath: spec.parameters.remoteResourceGroup.name
+      toFieldPath: spec.forProvider.resourceGroupName
+    - fromFieldPath: spec.parameters.remoteResourceGroup.vnetName
+      toFieldPath: spec.forProvider.virtualNetworkName
+
+    - fromFieldPath: spec.name
+      toFieldPath: spec.writeConnectionSecretToRef.name
+      transforms:
+      - type: string
+        string:
+          fmt: "%s-psqlaccess"
+    - fromFieldPath: spec.namespace
+      toFieldPath: spec.writeConnectionSecretToRef.namespace
+
