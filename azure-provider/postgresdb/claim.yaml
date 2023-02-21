@@ -1,0 +1,38 @@
+---
+apiVersion: crossplane.giantswarm.io/v1alpha1
+kind: ApdbClaim
+metadata:
+  name: test-crossplane-azure-pgsql
+  namespace: default
+  labels:
+    owner: giantswarm
+spec:
+  name: tcap-sql
+  namespace: default
+  compositionSelector:
+    matchLabels:
+      provider: azure
+      example: postgres-vnet
+  parameters:
+    providerConfigRef: postgres-vnet
+    location: West Europe
+    vnetRanges:
+    - 10.1.0.0/24
+    subnets:
+      public: 10.1.0.0/25
+      private: 10.1.0.128/25
+    sku: GP_Standard_D4s_v3
+    db:
+      version: "14"
+      admin: giantswarm
+      secret:
+        name: azure-db-pass
+        key: database-password
+      firewall:
+        startAddr: 10.0.0.0
+        endAddr: 10.0.0.0
+    remoteResourceGroup:
+      name: ${AZURE_RG}
+      vnetId: "/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${AZURE_RG}/providers/Microsoft.Network/virtualNetworks/${AZURE_VNET}"
+      vnetName: ${AZURE_VNET}
+

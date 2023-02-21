@@ -1,0 +1,159 @@
+---
+# Defines a PostGres definition for Azure
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: apdbs.crossplane.giantswarm.io
+spec:
+  connectionSecretKeys:
+  - kubeconfig
+  defaultCompositionRef:
+    name: pgsql-vnet
+  group: crossplane.giantswarm.io
+  names:
+    kind: CompositeApdb
+    plural: apdbs
+  claimNames:
+    kind: ApdbClaim
+    plural: apdbclaims
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              name:
+                type: string
+                description: Name of this instance that other objects will use to refer to it.
+              namespace:
+                type: string
+                description: The namespace to create objects in
+              parameters:
+                type: object
+                properties:
+                  providerConfigRef:
+                    description: The name of the provider config to use
+                    type: string
+                  deletionPolicy:
+                    description: Set the reclaim policy type for resources
+                    type: string
+                    default: Delete
+                    enum:
+                    - Delete
+                    - Orphan
+
+                  location:
+                    description: The regional location to build in
+                    type: string
+                  vnetRanges:
+                    description: A list of cidr blocks to give to the vnet
+                    type: array
+                    items:
+                      type: string
+                  subnets:
+                    description: A list of cidr ranges to use as the subnets
+                    type: object
+                    properties:
+                      public:
+                        description: The cidr range to use for the public subnet
+                        type: string
+                      private:
+                        description: The cidr range to use for the private subnet
+                        type: string
+                    required:
+                    - public
+                    - private
+                  sku:
+                    description: The server size to build for the database
+                    type: string
+                    default: GP_Standard_D4s_v3
+                  db:
+                    description: details for the database
+                    type: object
+                    properties:
+                      version:
+                        description: The version of postgresdb to install
+                        type: string
+                        default: "14"
+                        enum:
+                        - "11"
+                        - "12"
+                        - "13"
+                        - "14"
+                      size:
+                        description: The max storage size (in mb) of the database
+                        type: number
+                        default: 32768
+                        enum:
+                          - 32768
+                          - 65536
+                          - 131072
+                          - 262144
+                          - 524288
+                          - 1048576
+                          - 2097152
+                          - 4194304
+                          - 8388608
+                          - 16777216
+                      admin:
+                        description: The administrator account name to create
+                        type: string
+
+                      firewall:
+                        description: Start and end addresses to pass to the Database firewall rule
+                        type: object
+                        properties:
+                          startAddr:
+                            type: string
+                          endAddr:
+                            type: string
+
+                      secret:
+                        description: The prepopulated secret to use for the database
+                        type: object
+                        properties:
+                          name:
+                            description: The name of the secret to use. Must be in same namespace as claim
+                            type: string
+                          key:
+                            description: The key to select from inside the secret that will be used as the password
+                            type: string
+                            default: dbpass
+                        required:
+                        - name
+                    required:
+                    - admin
+                    - secret
+                    - firewall
+                  remoteResourceGroup:
+                    description: Details about the remote resource group and vnet used for peering
+                    type: object
+                    properties:
+                      vnetId:
+                        description: The full Azure resource ID of the remote virtual network allowed to peer.
+                        type: string
+                      vnetName:
+                        description: The name of the existing vnet we are peering with
+                        type: string
+                      name:
+                        description: The resource group the reverse peering vnet is in
+                        type: string
+                    required:
+                    - vnetId
+                    - vnetName
+                    - name
+                required:
+                - location
+                - vnetRanges
+                - subnets
+                - db
+                - remoteResourceGroup
+                - providerConfigRef
+            required:
+              - name
+              - parameters

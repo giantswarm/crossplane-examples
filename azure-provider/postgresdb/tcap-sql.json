@@ -1,0 +1,61 @@
+{
+    "Name": "tcap-sql",
+    "Description": "custom role for testing crossplane",
+    "AssignableScopes": [
+        "/subscriptions/${AZURE_SUBSCRIPTION_ID}"
+    ],
+    "Actions": [
+        "Microsoft.Network/virtualNetworks/subnets/read",
+        "Microsoft.Network/virtualNetworks/subnets/write",
+        "Microsoft.Network/virtualNetworks/subnets/delete",
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/read",
+        "Microsoft.Network/virtualNetworks/write",
+        "Microsoft.Network/virtualNetworks/delete",
+        "Microsoft.Network/virtualNetworks/peer/action",
+        "Microsoft.Network/virtualNetworks/join/action",
+
+        "Microsoft.Network/virtualNetworks/privateDnsZoneLinks/read",
+
+        "Microsoft.Network/virtualNetworks/virtualNetworkPeerings/read",
+        "Microsoft.Network/virtualNetworks/virtualNetworkPeerings/write",
+        "Microsoft.Network/virtualNetworks/virtualNetworkPeerings/delete",
+
+        "Microsoft.Resources/subscriptions/resourceGroups/read",
+        "Microsoft.Resources/subscriptions/resourceGroups/write",
+        "Microsoft.Resources/subscriptions/resourceGroups/delete",
+
+        "Microsoft.Resources/tags/read",
+        "Microsoft.Resources/tags/write",
+        "Microsoft.Resources/tags/delete",
+
+        "Microsoft.DBforPostgreSQL/flexibleServers/read",
+        "Microsoft.DBforPostgreSQL/flexibleServers/write",
+        "Microsoft.DBforPostgreSQL/flexibleServers/delete",
+        "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules/write",
+        "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules/read",
+        "Microsoft.DBforPostgreSQL/flexibleServers/firewallRules/delete",
+        "Microsoft.DBforPostgreSQL/flexibleServers/administrators/read",
+        "Microsoft.DBforPostgreSQL/flexibleServers/administrators/delete",
+        "Microsoft.DBforPostgreSQL/flexibleServers/administrators/write",
+        "Microsoft.DBforPostgreSQL/flexibleServers/configurations/read",
+        "Microsoft.DBforPostgreSQL/flexibleServers/configurations/write",
+        "Microsoft.DBforPostgreSQL/flexibleServers/databases/read",
+        "Microsoft.DBforPostgreSQL/flexibleServers/databases/write",
+        "Microsoft.DBforPostgreSQL/flexibleServers/databases/delete",
+
+        "Microsoft.Network/privateDnsZones/read",
+        "Microsoft.Network/privateDnsZones/write",
+        "Microsoft.Network/privateDnsZones/delete",
+        "Microsoft.Network/privateDnsZones/A/read",
+        "Microsoft.Network/privateDnsZones/A/write",
+        "Microsoft.Network/privateDnsZones/A/delete",
+        "Microsoft.Network/privateDnsZones/SOA/read",
+        "Microsoft.Network/privateDnsZones/SOA/write",
+        "Microsoft.Network/privateDnsZones/virtualNetworkLinks/read",
+        "Microsoft.Network/privateDnsZones/virtualNetworkLinks/write",
+        "Microsoft.Network/privateDnsZones/virtualNetworkLinks/delete"
+    ]
+}
