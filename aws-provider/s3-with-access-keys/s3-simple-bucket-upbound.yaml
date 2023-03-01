@@ -1,0 +1,10 @@
+apiVersion: s3.aws.upbound.io/v1beta1
+kind: Bucket
+metadata:
+  name: giantswarm-grizzly-harbor-test-cluster
+spec:
+  deletionPolicy: Delete
+  forProvider:
+    region: eu-west-2
+  providerConfigRef:
+    name: irsa
