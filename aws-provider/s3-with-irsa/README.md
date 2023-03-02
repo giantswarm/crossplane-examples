@@ -5,8 +5,7 @@
 This document is based on [official AWS provider authentication doc](https://github.com/upbound/provider-aws/blob/main/AUTHENTICATION.md).
 
 **Note**: This document is just a stub and not all the steps can be replicated
-without cluster admin permissions. Changes needed in deployment configuration
-are in progress.
+without cluster admin permissions. Please use [web identity](../s3-with-web-id/README.md) unless you really know you want IRSA approach.
 
 ## AWS setup
 
