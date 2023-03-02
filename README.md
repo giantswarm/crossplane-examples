@@ -10,5 +10,12 @@ Our examples use the following examples - please make sure you have them install
 - [`yq`](https://mikefarah.gitbook.io/yq/)
 - `envsubst` from package `gettext`
 
-## Index
+## Index of examples
 
+- [Azure Provider](azure-provider/README.md)
+  - simple [Storage Blob Containers](azure-provider/storage-blob/README.md)
+  - more advanced [Postgres DB as a part of bigger composition](azure-provider/postgresdb/README.md)
+- [AWS Provider](aws-provider/README.md)
+  - different authentication modes showed using simple S3 bucket
+    - legacy approach (not recommended if running already in AWS): [S3 bucket using access keys](aws-provider/s3-with-access-keys/README.md)
+    - IRSA (not recommended, as it limits possible Roles to just 1): [S3 bucket using IRSA authX](aws-provider/s3-with-irsa/README.md)

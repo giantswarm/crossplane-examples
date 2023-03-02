@@ -3,6 +3,8 @@
 
 This example shows how to create a dedicated [Policy](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies.html) and a [User](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_users.html) that has permissions restricted to only S3 buckets having a configured prefix. Then, it sets up Crossplane's `ProviderConfig` and creates a S3 bucket using Crossplane's AWS Provider.
 
+The example uses [IAM Access Keys](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) for authentication. This forces the user to manage and ensure security of Access Keys. If your cluster runs in AWS, please check our [other examples](../../README.md) that use Web Identity based approach, as Access Keys are not recommended in this case.
+
 ## AWS setup
 
 Make sure you're logged in to your AWS account with the `aws` tool.
