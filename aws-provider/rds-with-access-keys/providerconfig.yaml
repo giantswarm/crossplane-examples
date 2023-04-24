@@ -1,11 +1,11 @@
 apiVersion: aws.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
-  name: aws-s3-access
+  name: aws-rds-access
 spec:
   credentials:
     source: Secret
     secretRef:
       namespace: default
-      name: aws-s3-access
+      name: aws-rds-access
       key: creds

@@ -4,8 +4,10 @@ metadata:
   annotations:
     upjet.upbound.io/manual-intervention: This resource has a password secret reference.
   name: test-mysqldb
-  namespace: org-test
+  namespace: org-fernando
 spec:
+  providerConfigRef:
+    name: aws-rds-access
   forProvider:
     allocatedStorage: 20
     autoMinorVersionUpgrade: true
@@ -15,12 +17,12 @@ spec:
     engineVersion: "8.0"
     instanceClass: db.t2.micro
     maintenanceWindow: Mon:00:00-Mon:03:00
-    name: test-mysql
+    name: testmysql
     passwordSecretRef:
       key: password
       name: test-dbinstance
-      namespace: org-test
-    publiclyAccessible: false
+      namespace: org-fernando
+    publiclyAccessible: true
     region: eu-central-1
     skipFinalSnapshot: true
     storageEncrypted: false
@@ -28,4 +30,4 @@ spec:
     username: adminuser
   writeConnectionSecretToRef:
     name: mysql-db-out-metadata
-    namespace: org-test
+    namespace: org-fernando

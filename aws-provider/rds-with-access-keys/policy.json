@@ -1,13 +1,24 @@
 {
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Sid": "VisualEditor1",
-			"Effect": "Allow",
-			"Action": "rds:*",
-			"Resource": [
-				"arn:aws:rds:::test-*/*"
-			]
-		}
-	]
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+               "rds:DescribeDBInstances",
+               "rds:ListTagsForResource"
+             ],
+            "Resource": [
+                "*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": "rds:*",
+            "Resource": [
+                "arn:aws:rds:eu-central-1::db:test-*"
+            ]
+        }
+    ]
 }
