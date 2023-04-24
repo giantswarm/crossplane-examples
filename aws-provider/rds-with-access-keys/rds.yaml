@@ -1,0 +1,33 @@
+apiVersion: rds.aws.upbound.io/v1beta1
+kind: Instance
+metadata:
+  annotations:
+    upjet.upbound.io/manual-intervention: This resource has a password secret reference.
+  name: test-mysqldb
+  namespace: org-fernando
+spec:
+  providerConfigRef:
+    name: aws-rds-access
+  forProvider:
+    allocatedStorage: 20
+    autoMinorVersionUpgrade: true
+    backupRetentionPeriod: 14
+    backupWindow: 09:46-10:16
+    engine: mysql
+    engineVersion: "8.0"
+    instanceClass: db.t2.micro
+    maintenanceWindow: Mon:00:00-Mon:03:00
+    name: testmysql
+    passwordSecretRef:
+      key: password
+      name: test-dbinstance
+      namespace: org-fernando
+    publiclyAccessible: true
+    region: eu-central-1
+    skipFinalSnapshot: true
+    storageEncrypted: false
+    storageType: gp2
+    username: adminuser
+  writeConnectionSecretToRef:
+    name: mysql-db-out-metadata
+    namespace: org-fernando
