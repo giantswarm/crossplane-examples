@@ -26,27 +26,27 @@ spec:
       apiVersion: azure.upbound.io/v1beta1
       kind: ResourceGroup
     patches:
-    - fromFieldPath: spec.name
-      toFieldPath: metadata.name
+      - fromFieldPath: spec.name
+        toFieldPath: metadata.name
 
-    - fromFieldPath: spec.parameters.providerConfigRef
-      toFieldPath: spec.providerConfigRef.name
+      - fromFieldPath: spec.parameters.location
+        toFieldPath: spec.forProvider.location
 
-    - fromFieldPath: spec.parameters.deletionPolicy
-      toFieldPath: spec.deletionPolicy
+      - fromFieldPath: spec.parameters.providerConfigRef
+        toFieldPath: spec.providerConfigRef.name
 
-    - fromFieldPath: spec.parameters.location
-      toFieldPath: spec.forProvider.location
+      - fromFieldPath: spec.parameters.deletionPolicy
+        toFieldPath: spec.deletionPolicy
 
-    - fromFieldPath: spec.name
-      toFieldPath: spec.writeConnectionSecretToRef.name
-      transforms:
-      - type: string
-        string:
-          fmt: "%s-rg"
+      - fromFieldPath: spec.name
+        toFieldPath: spec.writeConnectionSecretToRef.name
+        transforms:
+          - type: string
+            string:
+            fmt: "%s-rg"
 
-    - fromFieldPath: spec.writeConnectionSecretToRef.namespace
-      toFieldPath: spec.writeConnectionSecretToRef.namespace
+      - fromFieldPath: spec.writeConnectionSecretToRef.namespace
+        toFieldPath: spec.writeConnectionSecretToRef.namespace
 
 # ------------------------------------------------------------------------------
 # VirtualNetwork
