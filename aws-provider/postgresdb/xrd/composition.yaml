@@ -830,7 +830,9 @@ spec:
           fromFieldPath: status.atProvider.hostedZoneId
           toFieldPath: status.zoneId
 
-
+    # ------------------------------------------------------------------------------
+    # VPC Peering connection
+    # ------------------------------------------------------------------------------
     - name: vpc-peering-rds-to-cluster
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
@@ -880,7 +882,10 @@ spec:
               string:
                 fmt: "%s-rds-cluster"
 
-    - name: rtbl-cluster-a
+    # ------------------------------------------------------------------------------
+    # Routes
+    # ------------------------------------------------------------------------------
+    - name: rt-cluster-a
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Route
@@ -910,7 +915,7 @@ spec:
               string:
                 fmt: "%s-cluster-rtbl-a"
 
-    - name: rtbl-cluster-b
+    - name: rt-cluster-b
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Route
@@ -940,7 +945,7 @@ spec:
               string:
                 fmt: "%s-cluster-rtbl-b"
 
-    - name: rtbl-cluster-c
+    - name: rt-cluster-c
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Route
@@ -970,7 +975,7 @@ spec:
               string:
                 fmt: "%s-cluster-rtbl-c"
 
-    - name: rtbl-rds-a
+    - name: rt-rds-a
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Route
@@ -1017,7 +1022,7 @@ spec:
                 fmt: "%s-rds-rtbl-a"
 
 
-    - name: rtbl-rds-b
+    - name: rt-rds-b
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Route
@@ -1063,7 +1068,7 @@ spec:
               string:
                 fmt: "%s-rds-rtbl-b"
 
-    - name: rtbl-rds-c
+    - name: rt-rds-c
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
         kind: Route
