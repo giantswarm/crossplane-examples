@@ -86,6 +86,9 @@ spec:
                           type: object
                           additionalProperties: true
                           default: {}
+                        namePrefix:
+                          description: A prefix for resources that match no other key
+                          type: string
 
                     region:
                       description: The region to build in
@@ -168,6 +171,10 @@ spec:
                       properties:
                         vpcId:
                           description: The full Azure resource ID of the remote virtual network allowed to peer.
+                          type: string
+
+                        name:
+                          description: The name of the VPC containing the cluster
                           type: string
 
                         vpcCidr:

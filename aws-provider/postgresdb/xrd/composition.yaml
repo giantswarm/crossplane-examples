@@ -98,6 +98,17 @@ spec:
 
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
+
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.subnet.Name
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%s-private-%sa"
+          toFieldPath: spec.forProvider.tags.Name
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -156,6 +167,17 @@ spec:
 
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
+
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.subnet.Name
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%s-private-%sb"
+          toFieldPath: spec.forProvider.tags.Name
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -211,6 +233,17 @@ spec:
 
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
+
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.subnet.Name
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%s-private-%sc"
+          toFieldPath: spec.forProvider.tags.Name
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -257,6 +290,17 @@ spec:
           toFieldPath: spec.forProvider.region
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
+
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.namePrefix
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%sprivate-rtbl-%sa"
+          toFieldPath: spec.forProvider.tags.Name
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -278,8 +322,6 @@ spec:
             - type: string
               string:
                 fmt: "%s-1a"
-        - fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
 
     - name: route-table-assoc-a
       base:
@@ -316,13 +358,6 @@ spec:
 
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-        - fromFieldPath: spec.parameters.tags.subnet
-          toFieldPath: spec.forProvider.tags
-        - fromFieldPath: spec.parameters.tags.common
-          toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
 
         - type: PatchSet
           patchSetName: metadata
@@ -339,9 +374,6 @@ spec:
             - type: string
               string:
                 fmt: "%s-1a"
-        - fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-
 
     - name: route-table-b
       base:
@@ -363,6 +395,18 @@ spec:
           toFieldPath: spec.forProvider.region
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
+
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.namePrefix
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%sprivate-rtbl-%sb"
+          toFieldPath: spec.forProvider.tags.Name
+
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -384,9 +428,6 @@ spec:
             - type: string
               string:
                 fmt: "%s-1b"
-        - fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-
 
     - name: route-table-assoc-b
       base:
@@ -424,13 +465,6 @@ spec:
 
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-        - fromFieldPath: spec.parameters.tags.subnet
-          toFieldPath: spec.forProvider.tags
-        - fromFieldPath: spec.parameters.tags.common
-          toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
 
         - type: PatchSet
           patchSetName: metadata
@@ -447,9 +481,6 @@ spec:
             - type: string
               string:
                 fmt: "%s-1b"
-        - fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-
 
     - name: route-table-c
       base:
@@ -471,6 +502,17 @@ spec:
           toFieldPath: spec.forProvider.region
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
+
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.namePrefix
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%sprivate-rtbl-%sc"
+          toFieldPath: spec.forProvider.tags.Name
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -492,9 +534,6 @@ spec:
             - type: string
               string:
                 fmt: "%s-1c"
-        - fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
-
 
     - name: route-table-assoc-c
       base:
@@ -525,7 +564,7 @@ spec:
           transforms:
             - type: string
               string:
-                fmt: "%sb"
+                fmt: "%sc"
 
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.availabilityZone
@@ -536,13 +575,6 @@ spec:
 
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-        - fromFieldPath: spec.parameters.tags.subnet
-          toFieldPath: spec.forProvider.tags
-        - fromFieldPath: spec.parameters.tags.common
-          toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
 
         - type: PatchSet
           patchSetName: metadata
@@ -559,8 +591,6 @@ spec:
             - type: string
               string:
                 fmt: "%s-1c"
-        - fromFieldPath: metadata.name
-          toFieldPath: spec.forProvider.tags["Name"]
 
     # ------------------------------------------------------------------------------
     # RDS Security group
@@ -650,8 +680,16 @@ spec:
         - fromFieldPath: spec.parameters.tags.kms
           toFieldPath: spec.forProvider.tags
 
-        - fromFieldPath: spec.parameters.tags.common
-          toFieldPath: spec.forProvider.tags
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.kms.Name
+              - fromFieldPath: spec.parameters.region
+            strategy: string
+            string:
+              fmt: "%s-%sa"
+          toFieldPath: spec.forProvider.tags.Name
+
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
           policy:
@@ -811,11 +849,15 @@ spec:
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
 
-        - fromFieldPath: spec.parameters.tags.vpc
-          toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
+        - type: CombineFromComposite
+          combine:
+            variables:
+              - fromFieldPath: spec.parameters.tags.vpc.Name
+              - fromFieldPath: spec.parameters.remoteVpc.name
+            strategy: string
+            string:
+              fmt: "%s-to-cluster-%s"
+          toFieldPath: spec.forProvider.tags.Name
 
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
