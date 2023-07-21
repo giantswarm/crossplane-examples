@@ -131,10 +131,6 @@ spec:
               string:
                 fmt: "%s-1a"
 
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.subnetId
-
     - name: rds-private-subnet-1b
       base:
         apiVersion: ec2.aws.upbound.io/v1beta1
@@ -626,10 +622,6 @@ spec:
               string:
                 fmt: "%s-sg"
 
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.id
-          toFieldPath: status.securityGroupId
-
     # ------------------------------------------------------------------------------
     # RDS Security group rule
     # ------------------------------------------------------------------------------
@@ -827,8 +819,8 @@ spec:
                 fmt: "%s-rds"
 
         - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.hostedZoneId
-          toFieldPath: status.zoneId
+          fromFieldPath: status.atProvider.address
+          toFieldPath: status.address
 
     # ------------------------------------------------------------------------------
     # VPC Peering connection

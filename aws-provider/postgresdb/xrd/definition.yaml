@@ -219,23 +219,11 @@ spec:
             status:
               type: object
               properties:
-                zoneId:
-                  description: The id of the zone hosting the address record
-                  type: string
-                subnetId:
-                  description: The ID of the primary subnet
-                  type: string
-                securityGroupId:
-                  description: The ID of the security group
+                address:
+                  description: The address of the database after creation
                   type: string
 
       additionalPrinterColumns:
-        - name: zoneId
+        - name: address
           type: string
-          jsonPath: ".status.zoneId"
-        - name: subnetId
-          type: string
-          jsonPath: ".status.subnetId"
-        - name: securityGroupId
-          type: string
-          jsonPath: ".status.securityGroupId"
+          jsonPath: ".status.address"
