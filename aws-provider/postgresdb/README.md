@@ -1,9 +1,21 @@
 # `crossplane` PostgresDB example
 
-In this more complex example, we're going to walk through the process of
-enabling provider-families with `sts:AssumeRoleWithWebIdentity` to the
-management cluster, then using that to bootstrap a database using a secondary
-role assumed by crossplane for the actual build.
+In contrast to the other examples in this [AWS provider series](../), this more
+complex example will build a full network hosting an Amazon Postgresql RDS
+database, peered to the cluster VPC with routes between each.
+
+For this example, we'll walk through the process of setting up the IAM roles,
+permission policies and trust relationships to carry out `AssumeRole` operations
+from the service accounts linked to each required Provider-family member within
+the [AWS provider family series](https://marketplace.upbound.io/providers?query=aws).
+
+The approach given in this document utilises [IRSA](https://docs.giantswarm.io/advanced/iam-roles-for-service-accounts/)
+and `AssumeRoleWithWebIdentity` permissions to target a role which grants only
+the permissions required to build the infrastructure required by this example.
+
+By using a targetted role in this manner, you are able to restrict who is
+allowed to use the service account with RBAC permissions although that falls
+outside of the scope of this example.
 
 > **Warning** Creating IAM permissions
 >
@@ -15,6 +27,15 @@ role assumed by crossplane for the actual build.
 
 ## Create the primary role
 
+For our build to take place, we require the creation of two roles in AWS IAM.
+
+The first of these is an `AssumeRoleWithWebIdentity` which has permissions to
+assume other roles, either in the current account, or using cross-account
+permissions.
+
+For this example, we're going to assume both roles are encompassed in the same
+account.
+`
 1. Edit the file [`crossplane-assume-role-policy`](./policies/crossplane-assume-role-policy.json)
    and set the variable `${AWS_ACCOUNT_ID}` to the ID of the AWS account you're
    going to use.
@@ -143,7 +164,22 @@ this example.
 
 ## Enabling providers
 
-Next, we need to set up the providers.
+By default, crossplane comes without any providers enabled and as such, we need
+to install the providers we're going to use for building and managing our
+infrastructure.
+
+In this exampled we require the following providers to be enabled.
+
+- EC2
+- RDS
+- KMS
+
+The name of each provider may be discovered from its API group prefixed with
+`xpkg.upbound.io/provider-aws-`.
+
+For example, for `ec2.aws.upbound.io` becomes `xpkg.upbound.io/provider-aws-ec2@VERSION`
+where `VERSION` is the exact provider version you wish to install, discoverable
+from doc.crds.dev/github.com/upbound/provider-aws
 
 In your management clusters git repository, go to the `management-clusters/MC_NAME/crossplane-providers`
 folder and create `kustomization.yaml` file in a sub-directory named after the
@@ -159,7 +195,7 @@ apigroup of your provider. For example:
 │       └── kustomization.yaml
 ```
 
-into each `kustomization.yaml` file, copy the following contents:
+Into each `kustomization.yaml` file, copy the following contents:
 
 ```yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
