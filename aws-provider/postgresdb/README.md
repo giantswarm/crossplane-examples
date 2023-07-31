@@ -20,7 +20,7 @@ cluster.
 
 - [provider-aws-ec2](https://marketplace.upbound.io/providers/upbound/provider-aws-ec2/)
 - [provider-aws-rds](https://marketplace.upbound.io/providers/upbound/provider-aws-rds/)
-- [provider-aws-kms](https://marketplace.upbound.io/providers/upbound/provider-aws-ec2/)
+- [provider-aws-kms](https://marketplace.upbound.io/providers/upbound/provider-aws-kms/)
 
 To enable these, please follow the instructions in [management-cluster-bases/extras/crossplane/providers/upbound/aws](https://github.com/giantswarm/management-cluster-bases/tree/main/extras/crossplane/providers/upbound/aws)
 including the instruction on [Using crossplane with IAM Roles for Service Accounts](https://github.com/giantswarm/management-cluster-bases/tree/main/extras/crossplane/providers/upbound/aws#using-crossplane-with-iam-roles-for-service-accounts)
