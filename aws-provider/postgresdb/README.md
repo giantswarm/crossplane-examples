@@ -1,304 +1,80 @@
 # `crossplane` PostgresDB example
 
+![RDS layout](./crossplane-rds.drawio.png)
+
 In contrast to the other examples in this [AWS provider series](../), this more
 complex example will build a full network hosting an Amazon Postgresql RDS
 database, peered to the cluster VPC with routes between each.
 
-For this example, we'll walk through the process of setting up the IAM roles,
-permission policies and trust relationships to carry out `AssumeRole` operations
-from the service accounts linked to each required Provider-family member within
-the [AWS provider family series](https://marketplace.upbound.io/providers?query=aws).
+The example contains three subnets, one for each availability zone, leaving
+space for read replicas to be created in zones B and C although the example
+does not actually implement these replicas.
 
-The approach given in this document utilises [IRSA](https://docs.giantswarm.io/advanced/iam-roles-for-service-accounts/)
-and `AssumeRoleWithWebIdentity` permissions to target a role which grants only
-the permissions required to build the infrastructure required by this example.
+## Initial setup
 
-By using a targetted role in this manner, you are able to restrict who is
-allowed to use the service account with RBAC permissions although that falls
-outside of the scope of this example.
+Before this example can be built, you must first enable crossplane AWS provider
+family members and create the primary role for crossplane to assume.
 
-> **Warning** Creating IAM permissions
->
-> The  following document assumes that you have permissions to create IAM roles
-> and policies inside your account.
->
-> If you do not have such permissions, please reach out to your account
-> administrator and ask them to create these for you.
+In this example, we need the following provider family members enabled inside the
+cluster.
 
-## Create the primary role
+- [provider-aws-ec2](https://marketplace.upbound.io/providers/upbound/provider-aws-ec2/)
+- [provider-aws-rds](https://marketplace.upbound.io/providers/upbound/provider-aws-rds/)
+- [provider-aws-kms](https://marketplace.upbound.io/providers/upbound/provider-aws-ec2/)
 
-For our build to take place, we require the creation of two roles in AWS IAM.
+To enable these, please follow the instructions in [management-cluster-bases/extras/crossplane/providers/upbound/aws](https://github.com/giantswarm/management-cluster-bases/tree/main/extras/crossplane/providers/upbound/aws)
+including the instruction on [Using crossplane with IAM Roles for Service Accounts](https://github.com/giantswarm/management-cluster-bases/tree/main/extras/crossplane/providers/upbound/aws#using-crossplane-with-iam-roles-for-service-accounts)
 
-The first of these is an `AssumeRoleWithWebIdentity` which has permissions to
-assume other roles, either in the current account, or using cross-account
-permissions.
+## Create the RDS role
 
-For this example, we're going to assume both roles are encompassed in the same
-account.
-`
-1. Edit the file [`crossplane-assume-role-policy`](./policies/crossplane-assume-role-policy.json)
+Once the providers have been enabled, and the primary assume role has been
+created, we now need to create a second role inside the account for crossplane
+to use with permissions to create and manage components inside the account.
+
+For a detailed explanation of which permissions are required and why, please
+see [this linked policy document](./policies/README.md).
+
+### Step by step installation guide
+
+1. Edit the file [`rds-crossplane-policy](./policies/rds-crossplane-policy.json)
    and set the variable `${AWS_ACCOUNT_ID}` to the ID of the AWS account you're
    going to use.
+
+   ```bash
+   export POLICY_NAME="rds-crossplane-policy"
+   export AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -rn .Account)
+
+   cat ./policies/${POLICY_NAME}.json | envsubst \
+       | sponge ./policies/${POLICY_NAME}.json
+   ```
 
 1. Apply this policy to AWS
 
    ```bash
-   NAME="crossplane-assume-role-policy"
    aws iam create-policy \
-     --policy-name $POLICY_NAME \
-     --policy-document file://${POLICY_NAME}.json \
-     --description "Custom policy for assuming roles"
+       --policy-name $POLICY_NAME \
+       --policy-document file://policies/${POLICY_NAME}.json \
+       --description "Custom policy for assuming roles"
    ```
 
-1. Edit the trust policy for this role to include any additional service accounts
-
-   The following command modifies the policy [`crossplane-assume-role-trust-policy.json`](./policies/crossplane-assume-role-trust-policy.json).
-   If you already know the name of the service account you wish to use, you
-   may feel more comfortable editing this file manually.
-
-   > **Note** Service account listings
-   >
-   > In the trust policy for this role, I am specifically mentioning all
-   > service accounts for the providers I require access to the account.
-   >
-   > Whilst this is a concious decision to provide visibility within the trust
-   > about which service accounts are allowed to connect, you may wish to
-   > allow any service account in a given namespace to connect as long as it
-   > starts with a provider prefix.
-   >
-   > In this instance, replace the entire `Condition` statement with an
-   > equivelant [`StringLike`](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_condition_operators.html#Conditions_String)
-   > condition.
-
-   The following example uses the `sponge` command from the `moreutils` package
-   to compensate for `jq` not having an `--inplace` flag. This will likely not
-   exist on your system but can normally be installed with the package manager
-   of your choice.
+1. Next, edit the trust policy and set the account ID to that of your account
 
    ```bash
-   PROVIDER_NAME=my-other-provider
-   jq '.Statement[].Condition."ForAnyValue:StringEquals"."${OIDC_PROVIDER_URL}:sub" |=
-       ( .+ ["system:serviceaccount:crossplane:'$(
-           kubectl -n crossplane get ControlLerConfig ${PROVIDERNAME} -o \
-               jsonpath='{.spec.serviceAccountName}'
-       )'"] | unique)' policies/crossplane-assume-role-trust-policy.json \
-           | sed '/".*:",/d' | sponge policies/crossplane-assume-role-trust-policy.json
+   export TRUST_POLICY_NAME=rds-crossplane-role-trust-policy
+   cat ./policies/${TRUST_POLICY_NAME}.json | envsubst \
+       | sponge ./policies/${TRUST_POLICY_NAME}.json
    ```
 
-1. Next, create a new WebIdentity role called `crossplane-assume-role` and bind
-   this policy to it. The Open ID Connect Identity Provider should be set to the
-   one for your cluster.
+1. Finally create the role and attach the policy to it.
 
-   - substitute the variables `AWS_ACCOUNT_ID` and `OICD_PROVIDER_URL` in the
-     trust policy:
-
-     ```bash
-      export OIDC_PROVIDER_URL=$(aws iam list-open-id-connect-providers \
-          | jq '.OpenIDConnectProviderList[] | .Arn | split("/")[1] | select(. | test("^\\w+.mycluster.(?!mycluster)"))')
-      export AWS_ACCOUNT_ID=$(aws sts get-caller-identity | jq -rn .Account)
-      cat policies/crossplane-assume-role-trust-policy.json | envsubst \
-          | sponge policies/crossplane-assume-role-trust-policy.json
-     ```
-
-   - Check that the role does not already exist
-
-     ```bash
-     aws iam list-roles | jq '.Roles[] | select( .RoleName == "crossplane-assume-role")'
-     ```
-
-     If the role does not exist, we need to create it and attach the policy
-
-     ```bash
-       aws iam create-role --role-name crossplane-assume-role --policy-document file://policies/crossplane-assume-role-trust-policy.json
-       aws iam attach-role-policy --policy-arn \
-           "arn:aws:iam::aws:policy/crossplane-assume-role-policy" \
-           --role-name crossplane-assume-role
-     ```
-
-     If the role already exists, update its trust policy with
-
-     ```bash
-       aws iam update-assume-role-policy --role-name crossplane-assume-role \
-           --policy-document file://policies/crossplane-assume-role-trust-policy.json
-     ```
-
-## Create the secondary role
-
-Use the steps defined in [creating the primary role](#create-the-primary-role) to
-create a new role `rds-crossplane-role`
-
-This second role will use the attach the trust policy and IAM permissions policy
-
-- [rds-crossplane-policy](./policies/rds-crossplane-policy.json).
-- [rds-crossplane-role-trust-policy](./policies/rds-crossplane-role-trust-policy.json)
-
-> **Note** Creating IAM policies to be assumed by other roles
->
-> When creating roles to be assumed by the service account identity role
-> `crossplane-assume-role`, at the very least, the policy must include the
-> following statement for other roles to be allowed to assume it.
->
-> ```json
-> {
->     "Sid": "VisualEditor2",
->     "Effect": "Allow",
->     "Action": "sts:AssumeRole",
->     "Resource": "*",
->     "Condition": {
->         "ForAnyValue:StringLike": {
->             "aws:PrincipalArn": [
->                 "arn:aws:sts::${AWS_ACCOUNT_ID}:role/crossplane-assume-role",
->                 "arn:aws:sts::${AWS_ACCOUNT_ID}:assumed-role/rds-crossplane-role*"
->             ]
->         }
->     }
-> }
-> ```
->
-> Without this, crossplane may not be able to assume the role and you will
-> experience permissions failures when building resources.
-
-The policy file [rds-crossplane-policy](./policies/rds-crossplane-policy.json)
-is a restrictive policy that allows only the specific actions required to build
-this example.
-
-## Enabling providers
-
-By default, crossplane comes without any providers enabled and as such, we need
-to install the providers we're going to use for building and managing our
-infrastructure.
-
-In this exampled we require the following providers to be enabled.
-
-- EC2
-- RDS
-- KMS
-
-The name of each provider may be discovered from its API group prefixed with
-`xpkg.upbound.io/provider-aws-`.
-
-For example, for `ec2.aws.upbound.io` becomes `xpkg.upbound.io/provider-aws-ec2@VERSION`
-where `VERSION` is the exact provider version you wish to install, discoverable
-from doc.crds.dev/github.com/upbound/provider-aws
-
-In your management clusters git repository, go to the `management-clusters/MC_NAME/crossplane-providers`
-folder and create `kustomization.yaml` file in a sub-directory named after the
-apigroup of your provider. For example:
-
-```nohighlight
-├── crossplane-providers
-│   ├── ec2
-│   │   └── kustomization.yaml
-│   ├── kms
-│   │   └── kustomization.yaml
-│   └── rds
-│       └── kustomization.yaml
-```
-
-Into each `kustomization.yaml` file, copy the following contents:
-
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - https://github.com/giantswarm/management-cluster-bases//extras/crossplane/providers/upbound/aws?ref=main
-patches:
-  - patch: |
-      - op: replace
-        path: /metadata/name
-        value: provider-aws-${PROVIDER}
-      - op: replace
-        path: /spec/serviceAccountName
-        value: upbound-provider-aws-${PROVIDER}
-    target:
-      kind: ControllerConfig
-  - patch: |
-      - op: replace
-        path: /metadata/name
-        value: provider-aws-${PROVIDER}
-      - op: replace
-        path: /spec/controllerConfigRef/name
-        value: provider-aws-PROIVIDER
-      - op: replace
-        path: /spec/package
-        value: xpkg.upbound.io/upbound/provider-aws-${PROVIDER}:${VERSION}
-    target:
-      kind: Provider
-  - patch: |
-      - op: add
-        path: /metadata/name
-        value: upbound-provider-aws-${PROVIDER}
-      - op: add
-        path: /metadata/annotations/eks.amazonaws.com~1role-arn
-        value: arn:aws:iam::${AWS_ACCOUNT_ID}:role/crossplane-assume-role
-    target:
-      kind: ServiceAccount
-  - patch: |
-     - op: replace
-       path: /metadata/name
-       value: crossplane-use-psp-upbound-provider-aws-${PROVIDER}
-     - op: replace
-       path: /subjects/0/name
-       value: upbound-provider-aws-${PROVIDER}
-    target:
-      kind: ClusterRoleBinding
-```
-
-The important section in this patch is the role annotation given to the service
-account.
-
-```yaml
-      - op: add
-        path: /metadata/annotations/eks.amazonaws.com~1role-arn
-        value: arn:aws:iam::${AWS_ACCOUNT_ID}:role/crossplane-assume-role
-```
-
-This patch allows the following to be injected into your pods environment and
-the service account token file to be injected.
-
-```bash
-AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
-AWS_STS_REGIONAL_ENDPOINTS=regional
-AWS_ROLE_ARN=arn:aws:iam::${AWS_ACCOUNT_ID}:role/crossplane-assume-role
-```
-
-From the `crossplane-providers` directory, run the following script:
-
-```bash
-export VERSION=v0.37.0
-for directory in $(find . -type d -not -name '.' -printf '%f\n'); do
-    export PROVIDER="${directory}"
-    cat "${directory}/kustomization.yaml" | envsubst | sponge "${directory}/kustomization.yaml"
-done
-```
-
-> **Note** Applying manifests
->
-> If you are using this on a cluster away from Giant Swarm, you may wish to
-> render these manifests individually.
->
-> For this, you will need `kustomize` installed.
->
-> Inside each directory, build the `Kustomization` and optionally, feed the
-> output to `yq` and have the resulting manifest split into multiple files.
->
-> ```bash
-> $ kustomize build . | yq -s .kind
-> $ tree
-> .
-> ├── ClusterRoleBinding.yml
-> ├── ControllerConfig.yml
-> ├── kustomization.yaml
-> ├── Provider.yml
-> └── ServiceAccount.yml
-> ```
->
-> You're free to delete the `kustomization.yaml` file at this point and apply
-> the resulting changes in a manner of your choice.
->
-> It should, however be noted that the cluster role binding refers to `ClusterRole`
-> you may not have on your cluster. That `ClusterRole` is available as part of
-> our [crossplane helm chart](https://github.com/giantswarm/crossplane/tree/main/helm/crossplane).
+   ```bash
+   ROLE_NAME=rds-crossplane-role
+   aws iam create-role --role-name ${ROLE_NAME} \
+       --policy-document file://policies/${TRUST_POLICY_NAME}.json
+   aws iam attach-role-policy --policy-arn \
+      "arn:aws:iam::aws:policy/${POLICY_NAME}" \
+      --role-name ${ROLE_NAME}
+   ```
 
 ## Installing the database
 
@@ -307,12 +83,22 @@ building our database.
 
 1. Create a secret for the database
 
+   Before we can create the database, we need to create a secret for the
+   database that we can use to connect to it.
+
    ```bash
    kubectl create secret generic -n default aws-rds-db-pass \
      --from-literal=database-password=$(pwgen -sn 20 1)
    ```
 
 1. Apply the contents of the `xrd` folder.
+
+   Inside the `xrd` folder, we define the [`Composition`](./xrd/composition.yaml)
+   and [`Definition`](./xrd/definition.yaml) of our database, including all the
+   network components we need for our database to be reachable from the cluster
+   VPC.
+
+   These must be applied before we can make a claim against them.
 
    ```bash
    kubectl apply -f xrd
@@ -330,13 +116,17 @@ building our database.
    ```
 
    In this file, we need to define two sets of credentials. The first is the
-   WebIdentityAssumeRole.
+   `WebIdentityAssumeRole`. If you followed the instructions in
+   [`management-cluster-bases`](https://github.com/giantswarm/management-cluster-bases/blob/update-provider-doc/extras/crossplane/providers/upbound/aws/setting-up-irsa.md)
+   then the name of this role should be `crossplane-assume-role` however your
+   installation may differ if you chose another name for the primary role.
 
-   Although we've already applied this to the pod, we need to instruct crossplane
-   that it's to use it as its primary login and we do this under the `credentials`
-   property.
+   Although we've already applied the primary role to the pod service account,
+   we also need to instruct crossplane that it's to use it as its primary login
+   and we do this under the `credentials` property.
 
-   The second role is the role we'll use to build the database.
+   The role listed under `assumeRoleChain` must be the one that we specify when
+   [creating the rds role](#create-the-rds-role).
 
 1. Edit [`claim.yaml`](./claim.yaml)
 
@@ -359,10 +149,10 @@ coffee, then when you check back, we should be able to connect to the database.
 
 ## Testing
 
-1. Apply the pod file
+1. Apply the test pod file [`pgclient.yaml`](./pgclient.yaml)
 
    ```bash
-   kubectl apply -f ../../azure-provider/postgresdb/pgclient.yaml
+   kubectl apply -f ./pgclient.yaml
    ```
 
 2. Connect to the database

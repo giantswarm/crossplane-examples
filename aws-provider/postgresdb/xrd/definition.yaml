@@ -1,5 +1,5 @@
 ---
-# Defines an EKS cluster for a standard 3 zone deployment
+# Defines an RDS cluster for a standard 3 zone deployment
 apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
