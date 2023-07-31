@@ -1,0 +1,229 @@
+---
+# Defines an RDS cluster for a standard 3 zone deployment
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xawsrds.crossplane.giantswarm.io
+spec:
+  connectionSecretKeys:
+    - kubeconfig
+  defaultCompositionRef:
+    name: aws-rds
+  group: crossplane.giantswarm.io
+  names:
+    kind: CompositeRds
+    plural: xawsrds
+  claimNames:
+    kind: RdsClaim
+    plural: rdsclaims
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                name:
+                  description: Name of this instance that other objects will use to refer to it.
+                  type: string
+                namespace:
+                  description: The namespace to create objects in
+                  type: string
+                labels:
+                  description: A set of labels to apply to all resources
+                  type: object
+                  additionalProperties: true
+                parameters:
+                  type: object
+                  properties:
+                    providerConfigRef:
+                      description: The name of the provider config to use
+                      type: string
+
+                    deletionPolicy:
+                      description: Set the reclaim policy type for resources
+                      type: string
+                      default: Delete
+                      enum:
+                        - Delete
+                        - Orphan
+
+                    tags:
+                      description: Tags to apply to different resources in the set
+                      type: object
+                      properties:
+                        common:
+                          description: A set of tags common to all resources
+                          type: object
+                          additionalProperties: true
+                          default: {}
+                        vpc:
+                          description: a set of tags specific to the VPC
+                          type: object
+                          additionalProperties: true
+                          default: {}
+                        subnet:
+                          description: A map of tags to apply to the subnet
+                          type: object
+                          additionalProperties: true
+                          default: {}
+                        securityGroup:
+                          description: A map of tags to apply to the securityGroup
+                          type: object
+                          additionalProperties: true
+                          default: {}
+                        rds:
+                          description: A map of tags to apply to the database
+                          type: object
+                          additionalProperties: true
+                          default: {}
+                        kms:
+                          description: A map of tags to apply to the encryption key
+                          type: object
+                          additionalProperties: true
+                          default: {}
+                        namePrefix:
+                          description: A prefix for resources that match no other key
+                          type: string
+
+                    region:
+                      description: The region to build in
+                      type: string
+
+                    vpcCidr:
+                      description: The CIDR range to give to the VPC
+                      type: string
+
+                    subnets:
+                      description: CIDR ranges to use as subnets
+                      type: object
+                      properties:
+                        private-a:
+                          description: The CIDR range to use for the private subnet in availability zone a
+                          type: string
+                        private-b:
+                          description: The CIDR range to use for the private subnet in availability zone b
+                          type: string
+                        private-c:
+                          description: The CIDR range to use for the private subnet in availability zone c
+                          type: string
+                      required:
+                        - private-a
+                        - private-b
+                        - private-c
+
+                    db:
+                      description: details for the database
+                      type: object
+                      properties:
+                        name:
+                          description: The name of the database to create
+                          type: string
+                        instance:
+                          description: The server size to build for the database
+                          type: string
+                        version:
+                          description: The version of postgresdb to install
+                          type: string
+                          default: "14"
+                          enum:
+                            - "11"
+                            - "12"
+                            - "13"
+                            - "14"
+                            - "15"
+                            - "16"
+                        size:
+                          description: The max storage size (in gi) of the database
+                          type: number
+                          default: 10
+
+                        admin:
+                          description: The administrator account name to create
+                          type: string
+
+                        secret:
+                          description: The prepopulated secret to use for the database
+                          type: object
+                          properties:
+                            name:
+                              description: The name of the secret to use. Must be in same namespace as claim
+                              type: string
+                            key:
+                              description: The key to select from inside the secret that will be used as the password
+                              type: string
+                              default: dbpass
+                          required:
+                            - name
+                      required:
+                        - instance
+                        - size
+                        - admin
+                        - secret
+
+                    remoteVpc:
+                      description: Details about the remote VPC that will be allowed to connect to this DB
+                      type: object
+                      properties:
+                        vpcId:
+                          description: The full Azure resource ID of the remote virtual network allowed to peer.
+                          type: string
+
+                        name:
+                          description: The name of the VPC containing the cluster
+                          type: string
+
+                        vpcCidr:
+                          description: The cidrblock for this VPC
+                          type: string
+
+                        routeTables:
+                          description: A set of route tables to populate in the peer VPC
+                          type: object
+                          properties:
+                            a:
+                              description: Route table in availabilityZone A
+                              type: string
+                            b:
+                              description: Route table in availabilityZone B
+                              type: string
+                            c:
+                              description: Route table in availabilityZone C
+                              type: string
+                          required:
+                            - a
+                            - b
+                            - c
+
+                      required:
+                        - vpcId
+                        - vpcCidr
+                        - routeTables
+                  required:
+                    - providerConfigRef
+                    - tags
+                    - region
+                    - vpcCidr
+                    - subnets
+                    - db
+                    - remoteVpc
+              required:
+                - name
+                - namespace
+                - labels
+                - parameters
+            status:
+              type: object
+              properties:
+                address:
+                  description: The address of the database after creation
+                  type: string
+
+      additionalPrinterColumns:
+        - name: address
+          type: string
+          jsonPath: ".status.address"
