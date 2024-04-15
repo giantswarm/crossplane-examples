@@ -1,1107 +1,1184 @@
----
 apiVersion: apiextensions.crossplane.io/v1
 kind: Composition
 metadata:
-  name: aws-rds
+  creationTimestamp: "2024-04-13T08:27:25Z"
   labels:
-    provider: aws
-    component: postgres-vpc
-    app.kubernetes.io/name: postgres
     app.kubernetes.io/managed-by: crossplane
+    app.kubernetes.io/name: postgres
+    component: postgres-vpc
+    provider: aws
+  name: aws-rds
 spec:
   compositeTypeRef:
     apiVersion: crossplane.giantswarm.io/v1alpha1
     kind: CompositeRds
-  writeConnectionSecretsToNamespace: crossplane
-  patchSets:
-    - name: metadata
-      patches:
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      environment: null
+      kind: Resources
+      patchSets:
+      - name: metadata
+        patches:
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
-        - fromFieldPath: spec.namespace
-          toFieldPath: metadata.namespace
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.labels
-          toFieldPath: metadata.labels
           policy:
-            mergeOptions:
-              keepMapValues: true
+            toFieldPath: MergeObject
+          toFieldPath: metadata.labels
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.providerConfigRef
           toFieldPath: spec.providerConfigRef.name
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.deletionPolicy
           toFieldPath: spec.deletionPolicy
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.namespace
           toFieldPath: spec.writeConnectionSecretToRef.namespace
-  resources:
-    # ------------------------------------------------------------------------------
-    # VPC
-    # ------------------------------------------------------------------------------
-    - name: rds-vpc
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: VPC
-        spec:
-          forProvider:
-            enableDnsSupport: true
-      patches:
+          type: FromCompositeFieldPath
+      resources:
+      # ------------------------------------------------------------------------------
+      # VPC
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: VPC
+          spec:
+            forProvider:
+              enableDnsSupport: true
+        name: rds-vpc
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.vpcCidr
           toFieldPath: spec.forProvider.cidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.vpc
           toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-vpc"
-
-    # ------------------------------------------------------------------------------
-    # RDS subnet
-    # ------------------------------------------------------------------------------
-    - name: rds-private-subnet-1a
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          labels:
-            access: private
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-            mapPublicIPOnLaunch: false
-      patches:
+          - string:
+              fmt: '%s-vpc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # ------------------------------------------------------------------------------
+      # RDS subnet
+      # ------------------------------------------------------------------------------
+      # Subnet A
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Subnet
+          metadata:
+            labels:
+              access: private
+          spec:
+            forProvider:
+              mapPublicIpOnLaunch: false
+              vpcIdSelector:
+                matchControllerRef: true
+        name: rds-private-subnet-1a
+        patches:
         - fromFieldPath: spec.parameters.region
-          toFieldPath: metadata.labels.availabilityZone
+          toFieldPath: metadata.labels["availabilityZone"]
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.subnets.private-a
           toFieldPath: spec.forProvider.cidrBlock
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.subnet.Name
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%s-private-%sa"
+              fmt: '%s-private-%sa'
+            variables:
+            - fromFieldPath: spec.parameters.tags.subnet.Name
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-sneta"
-
+          - string:
+              fmt: '%s-sneta'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1a"
-
-    - name: rds-private-subnet-1b
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          labels:
-            access: private
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-            mapPublicIPOnLaunch: false
-      patches:
+          - string:
+              fmt: '%s-1a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # Subnet B
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Subnet
+          metadata:
+            labels:
+              access: private
+          spec:
+            forProvider:
+              mapPublicIpOnLaunch: false
+              vpcIdSelector:
+                matchControllerRef: true
+        name: rds-private-subnet-1b
+        patches:
         - fromFieldPath: spec.parameters.region
-          toFieldPath: metadata.labels.availabilityZone
+          toFieldPath: metadata.labels["availabilityZone"]
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.subnets.private-b
           toFieldPath: spec.forProvider.cidrBlock
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.subnet.Name
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%s-private-%sb"
+              fmt: '%s-private-%sb'
+            variables:
+            - fromFieldPath: spec.parameters.tags.subnet.Name
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-snet-b"
-
+          - string:
+              fmt: '%s-snet-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1b"
-
-    - name: rds-private-subnet-1c
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Subnet
-        metadata:
-          labels:
-            access: private
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-            mapPublicIPOnLaunch: false
-      patches:
+          - string:
+              fmt: '%s-1b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # Subnet C
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Subnet
+          metadata:
+            labels:
+              access: private
+          spec:
+            forProvider:
+              mapPublicIpOnLaunch: false
+              vpcIdSelector:
+                matchControllerRef: true
+        name: rds-private-subnet-1c
+        patches:
         - fromFieldPath: spec.parameters.region
-          toFieldPath: metadata.labels.availabilityZone
+          toFieldPath: metadata.labels["availabilityZone"]
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
-
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.subnets.private-c
           toFieldPath: spec.forProvider.cidrBlock
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.subnet.Name
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%s-private-%sc"
+              fmt: '%s-private-%sc'
+            variables:
+            - fromFieldPath: spec.parameters.tags.subnet.Name
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-snet-c"
-
+          - string:
+              fmt: '%s-snet-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1c"
+          - string:
+              fmt: '%s-1c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
 
-    # ------------------------------------------------------------------------------
-    # Route Tables
-    # ------------------------------------------------------------------------------
-    - name: route-table-a
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTable
-        spec:
-          forProvider:
-            descrption: Security group for postgresql database for backstage
-            vpcIdSelector:
-              matchControllerRef: true
-      patches:
+      # ------------------------------------------------------------------------------
+      # Route Tables
+      # ------------------------------------------------------------------------------
+      # RTBL A
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTable
+          spec:
+            forProvider:
+              vpcIdSelector:
+                matchControllerRef: true
+        name: route-table-a
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
-
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.namePrefix
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%sprivate-rtbl-%sa"
+              fmt: '%sprivate-rtbl-%sa'
+            variables:
+            - fromFieldPath: spec.parameters.tags.namePrefix
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rtbl-a"
-
+          - string:
+              fmt: '%s-rtbl-a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1a"
-
-    - name: route-table-assoc-a
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        spec:
-          forProvider:
-            routeTableIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-            vpcIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-1a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # RTBL A association
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTableAssociation
+          spec:
+            forProvider:
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+              subnetIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+        name: route-table-assoc-a
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels["availabilityZone"]
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
-
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels["availabilityZone"]
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
-
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rtbl-assoc-a"
-
+          - string:
+              fmt: '%s-rtbl-assoc-a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1a"
-
-    - name: route-table-b
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTable
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-1a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # RTBL B
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTable
+          spec:
+            forProvider:
+              vpcIdSelector:
+                matchControllerRef: true
+        name: route-table-b
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
-
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.namePrefix
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%sprivate-rtbl-%sb"
+              fmt: '%sprivate-rtbl-%sb'
+            variables:
+            - fromFieldPath: spec.parameters.tags.namePrefix
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rtbl-b"
-
+          - string:
+              fmt: '%s-rtbl-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1b"
-
-    - name: route-table-assoc-b
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        spec:
-          forProvider:
-            routeTableIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-            vpcIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-1b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # RTBL B association
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTableAssociation
+          spec:
+            forProvider:
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+              subnetIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+        name: route-table-assoc-b
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
-
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
-
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
-
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rtbl-assoc-b"
-
+          - string:
+              fmt: '%s-rtbl-assoc-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1b"
-
-    - name: route-table-c
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTable
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-1b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      # RTBL C
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTable
+          spec:
+            forProvider:
+              vpcIdSelector:
+                matchControllerRef: true
+        name: route-table-c
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
-
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.subnet
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.namePrefix
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%sprivate-rtbl-%sc"
+              fmt: '%sprivate-rtbl-%sc'
+            variables:
+            - fromFieldPath: spec.parameters.tags.namePrefix
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rtbl-c"
-
+          - string:
+              fmt: '%s-rtbl-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1c"
-
-    - name: route-table-assoc-c
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: RouteTableAssociation
-        spec:
-          forProvider:
-            routeTableIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-            vpcIdSelector:
-              matchControllerRef: true
-            subnetIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-      patches:
+          - string:
+              fmt: '%s-1c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTableAssociation
+          spec:
+            forProvider:
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+              subnetIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+        name: route-table-assoc-c
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
-
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
-
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.subnetIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
-
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rtbl-assoc-c"
-
+          - string:
+              fmt: '%s-rtbl-assoc-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-1c"
+          - string:
+              fmt: '%s-1c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
 
-    # ------------------------------------------------------------------------------
-    # RDS Security group
-    # ------------------------------------------------------------------------------
-    - name: rds-access-security-group
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroup
-        spec:
-          forProvider:
-            name: rds-security-group-backstage
-            descrption: Security group for postgresql database for backstage
-            vpcIdSelector:
-              matchControllerRef: true
-      patches:
+      # ------------------------------------------------------------------------------
+      # RDS Security group
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroup
+          spec:
+            forProvider:
+              description: Security group for postgresql database for backstage
+              name: rds-security-group-backstage
+              vpcIdSelector:
+                matchControllerRef: true
+        name: rds-access-security-group
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.securityGroup
           toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-sg"
+          - string:
+              fmt: '%s-sg'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
 
-    # ------------------------------------------------------------------------------
-    # RDS Security group rule
-    # ------------------------------------------------------------------------------
-    - name: rds-access-rule-allow-5432
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: SecurityGroupRule
-        spec:
-          forProvider:
-            cidrBlocks: []
-            description: Allow port 5432 from the cluster
-            securityGroupIdSelector:
-              matchControllerRef: true
-            protocol: tcp
-            type: ingress
-            fromPort: 5432
-            toPort: 5432
-      patches:
+      # ------------------------------------------------------------------------------
+      # RDS Security group rule
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroupRule
+          spec:
+            forProvider:
+              cidrBlocks: []
+              description: Allow port 5432 from the cluster
+              fromPort: 5432
+              protocol: tcp
+              securityGroupIdSelector:
+                matchControllerRef: true
+              toPort: 5432
+              type: ingress
+        name: rds-access-rule-allow-5432
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.vpcCidr
           toFieldPath: spec.forProvider.cidrBlocks[0]
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.vpcCidr
           toFieldPath: spec.forProvider.cidrBlocks[1]
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-sgrule"
+          - string:
+              fmt: '%s-sgrule'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
 
-
-    # ------------------------------------------------------------------------------
-    # KMS key for encrypting database
-    # ------------------------------------------------------------------------------
-    - name: rds-postgres-encryption-key
-      base:
-        apiVersion: kms.aws.upbound.io/v1beta1
-        kind: Key
-      patches:
+      # ------------------------------------------------------------------------------
+      # KMS key for encrypting database
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: kms.aws.upbound.io/v1beta1
+          kind: Key
+        name: rds-postgres-encryption-key
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.kms
           toFieldPath: spec.forProvider.tags
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.kms.Name
-              - fromFieldPath: spec.parameters.region
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%s-%sa"
+              fmt: '%s-%sa'
+            variables:
+            - fromFieldPath: spec.parameters.tags.kms.Name
+            - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-kms"
+          - string:
+              fmt: '%s-kms'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
 
-    # ------------------------------------------------------------------------------
-    # Postgres RDS Database Subnet Group
-    # ------------------------------------------------------------------------------
-
-    - name: rds-postgres-db-subnet-group
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: SubnetGroup
-        spec:
-          forProvider:
-            description: Subnet group for RDS DB
-            subnetIdSelector:
-              matchLabels:
-                access: private
-      patches:
+      # ------------------------------------------------------------------------------
+      # Postgres RDS Database Subnet Group
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: SubnetGroup
+          spec:
+            forProvider:
+              description: Subnet group for RDS DB
+              subnetIdSelector:
+                matchLabels:
+                  access: private
+        name: rds-postgres-db-subnet-group
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.rds
           toFieldPath: spec.forProvider.tags
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rds-subnet-grp"
+          - string:
+              fmt: '%s-rds-subnet-grp'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
 
-
-    # ------------------------------------------------------------------------------
-    # Postgres RDS instance
-    # ------------------------------------------------------------------------------
-    - name: rds-postgres-db
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            vpcIdSelector:
-              matchControllerRef: true
-            autoMinorVersionUpgrade: true
-            backupRetentionPeriod: 0
-            passwordSecretRef: {}
-            dbSubnetGroupNameSelector:
-              matchControllerRef: true
-            copyTagsToSnapshot: true
-            dbInstanceClass: db.t3.medium
-            deletionProtection: false
-            enableIAMDatabaseAuthentication: false
-            enablePerformanceInsights: false
-            engine: postgres
-            multiAZ: false
-            port: 5432
-            preferredBackupWindow: 06:15-06:45
-            preferredMaintenanceWindow: sat:09:21-sat:09:51
-            publiclyAccessible: false
-            storageEncrypted: true
-            storageType: gp2
-            kmsKeyIdSelector:
-              matchControllerRef: true
-            skipFinalSnapshot: true
-            vpcSecurityGroupIdSelector:
-              matchControllerRef: true
-      patches:
+      # ------------------------------------------------------------------------------
+      # Postgres RDS instance
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: rds.aws.upbound.io/v1beta2
+          kind: Instance
+          spec:
+            forProvider:
+              autoMinorVersionUpgrade: true
+              backupRetentionPeriod: 0
+              copyTagsToSnapshot: true
+              instanceClass: db.t3.medium
+              dbSubnetGroupNameSelector:
+                matchControllerRef: true
+              deletionProtection: false
+              iamDatabaseAuthenticationEnabled: false
+              performanceInsightsEnabled: false
+              engine: postgres
+              kmsKeyIdSelector:
+                matchControllerRef: true
+              multiAz: false
+              passwordSecretRef: {}
+              port: 5432
+              backupWindow: 06:15-06:45
+              maintenanceWindow: sat:09:21-sat:09:51
+              publiclyAccessible: false
+              skipFinalSnapshot: true
+              storageEncrypted: true
+              storageType: gp2
+              vpcSecurityGroupIdSelector:
+                matchControllerRef: true
+        name: rds-postgres-db
+        patches:
         - fromFieldPath: spec.parameters.db.name
-          toFieldPath: spec.forProvider.name
+          toFieldPath: spec.forProvider.dbName
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.db.size
           toFieldPath: spec.forProvider.allocatedStorage
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.db.instance
           toFieldPath: spec.forProvider.instanceClass
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.db.version
           toFieldPath: spec.forProvider.engineVersion
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
-          toFieldPath: spec.forProvider.finalDBSnapshotIdentifier
-
+          toFieldPath: spec.forProvider.finalSnapshotIdentifier
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.db.admin
           toFieldPath: spec.forProvider.username
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.db.secret.key
           toFieldPath: spec.forProvider.passwordSecretRef.key
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.db.secret.name
           toFieldPath: spec.forProvider.passwordSecretRef.name
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.namespace
           toFieldPath: spec.forProvider.passwordSecretRef.namespace
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.rds
           toFieldPath: spec.forProvider.tags
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
-
-        - type: PatchSet
-          patchSetName: metadata
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rds"
-
-        - type: ToCompositeFieldPath
-          fromFieldPath: status.atProvider.address
+          - string:
+              fmt: '%s-rds'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+        - fromFieldPath: status.atProvider.address
           toFieldPath: status.address
-
-    # ------------------------------------------------------------------------------
-    # VPC Peering connection
-    # ------------------------------------------------------------------------------
-    - name: vpc-peering-rds-to-cluster
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: VPCPeeringConnection
-        spec:
-          forProvider:
-            autoAccept: true
-            vpcIdSelector:
-              matchControllerRef: true
-            tags:
-              Name: rds-to-cluster
-
-      patches:
+          type: ToCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: VPCPeeringConnection
+          spec:
+            forProvider:
+              autoAccept: true
+              tags:
+                Name: rds-to-cluster
+              vpcIdSelector:
+                matchControllerRef: true
+        name: vpc-peering-rds-to-cluster
+        patches:
         - fromFieldPath: spec.parameters.remoteVpc.vpcId
           toFieldPath: spec.forProvider.peerVpcId
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-
-        - type: CombineFromComposite
-          combine:
-            variables:
-              - fromFieldPath: spec.parameters.tags.vpc.Name
-              - fromFieldPath: spec.parameters.remoteVpc.name
+          type: FromCompositeFieldPath
+        - combine:
             strategy: string
             string:
-              fmt: "%s-to-cluster-%s"
+              fmt: '%s-to-cluster-%s'
+            variables:
+            - fromFieldPath: spec.parameters.tags.vpc.Name
+            - fromFieldPath: spec.parameters.remoteVpc.name
           toFieldPath: spec.forProvider.tags.Name
-
+          type: CombineFromComposite
         - fromFieldPath: spec.parameters.tags.common
           toFieldPath: spec.forProvider.tags
-          policy:
-            mergeOptions:
-              keepMapValues: false
-
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-rds-cluster"
+          - string:
+              fmt: '%s-peering-rds-cluster'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rds-cluster"
-
-    # ------------------------------------------------------------------------------
-    # Routes
-    # ------------------------------------------------------------------------------
-    - name: rt-cluster-a
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Route
-        spec:
-          forProvider:
-            vpcPeeringConnectionIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-rds-cluster'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          spec:
+            forProvider:
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+        name: rt-cluster-a
+        patches:
         - fromFieldPath: spec.parameters.vpcCidr
           toFieldPath: spec.forProvider.destinationCidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.routeTables.a
           toFieldPath: spec.forProvider.routeTableId
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-cluster-rtbl-a"
+          - string:
+              fmt: '%s-peering-cluster-rtbl-a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-cluster-rtbl-a"
-
-    - name: rt-cluster-b
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Route
-        spec:
-          forProvider:
-            vpcPeeringConnectionIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-cluster-rtbl-a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          spec:
+            forProvider:
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+        name: rt-cluster-b
+        patches:
         - fromFieldPath: spec.parameters.vpcCidr
           toFieldPath: spec.forProvider.destinationCidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.routeTables.b
           toFieldPath: spec.forProvider.routeTableId
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-cluster-rtbl-b"
+          - string:
+              fmt: '%s-peering-cluster-rtbl-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-cluster-rtbl-b"
-
-    - name: rt-cluster-c
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Route
-        spec:
-          forProvider:
-            vpcPeeringConnectionIdSelector:
-              matchControllerRef: true
-      patches:
+          - string:
+              fmt: '%s-cluster-rtbl-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          spec:
+            forProvider:
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+        name: rt-cluster-c
+        patches:
         - fromFieldPath: spec.parameters.vpcCidr
           toFieldPath: spec.forProvider.destinationCidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.routeTables.c
           toFieldPath: spec.forProvider.routeTableId
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-cluster-rtbl-c"
+          - string:
+              fmt: '%s-peering-cluster-rtbl-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-cluster-rtbl-c"
-
-    - name: rt-rds-a
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Route
-        spec:
-          forProvider:
-            vpcPeeringConnectionIdSelector:
-              matchControllerRef: true
-            routeTableIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-
-      patches:
+          - string:
+              fmt: '%s-cluster-rtbl-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          spec:
+            forProvider:
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+        name: rt-rds-a
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sa"
-
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.vpcCidr
           toFieldPath: spec.forProvider.destinationCidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-rds-rtbl-a"
+          - string:
+              fmt: '%s-peering-rds-rtbl-a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rds-rtbl-a"
-
-
-    - name: rt-rds-b
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Route
-        spec:
-          forProvider:
-            vpcPeeringConnectionIdSelector:
-              matchControllerRef: true
-            routeTableIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-
-      patches:
+          - string:
+              fmt: '%s-rds-rtbl-a'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          spec:
+            forProvider:
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+        name: rt-rds-b
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sb"
-
+          - string:
+              fmt: '%sb'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.vpcCidr
           toFieldPath: spec.forProvider.destinationCidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-rds-rtbl-b"
+          - string:
+              fmt: '%s-peering-rds-rtbl-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rds-rtbl-b"
-
-    - name: rt-rds-c
-      base:
-        apiVersion: ec2.aws.upbound.io/v1beta1
-        kind: Route
-        spec:
-          forProvider:
-            vpcPeeringConnectionIdSelector:
-              matchControllerRef: true
-            routeTableIdSelector:
-              matchControllerRef: true
-              matchLabels:
-                availabilityZone: ""
-
-      patches:
+          - string:
+              fmt: '%s-rds-rtbl-b'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Route
+          spec:
+            forProvider:
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: ""
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+        name: rt-rds-c
+        patches:
         - fromFieldPath: spec.parameters.region
           toFieldPath: metadata.labels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.routeTableIdSelector.matchLabels.availabilityZone
           transforms:
-            - type: string
-              string:
-                fmt: "%sc"
-
+          - string:
+              fmt: '%sc'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.remoteVpc.vpcCidr
           toFieldPath: spec.forProvider.destinationCidrBlock
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.parameters.region
           toFieldPath: spec.forProvider.region
-        - type: PatchSet
-          patchSetName: metadata
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
         - fromFieldPath: spec.name
           toFieldPath: spec.writeConnectionSecretToRef.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-peering-rds-rtbl-c"
+          - string:
+              fmt: '%s-peering-rds-rtbl-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
         - fromFieldPath: spec.name
           toFieldPath: metadata.name
           transforms:
-            - type: string
-              string:
-                fmt: "%s-rds-rtbl-c"
+          - string:
+              fmt: '%s-rds-rtbl-c'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+    step: patch-and-transform
