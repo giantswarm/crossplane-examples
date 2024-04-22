@@ -1,0 +1,504 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  creationTimestamp: "2024-04-13T08:27:25Z"
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    app.kubernetes.io/name: basic
+    component: network
+    provider: aws
+  name: vpc-network
+spec:
+  compositeTypeRef:
+    apiVersion: xnetworks.crossplane.giantswarm.io/v1alpha1
+    kind: VpcNetwork
+  mode: Pipeline
+  pipeline:
+  - step: create-subnetsets-from-template
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $appName := "" }}
+          {{ $claimRef := .observed.composite.resource.spec.claimRef }}
+          {{ if not ( empty $claimRef ) }}
+          {{ $appName = index $claimRef "name" }}
+          {{ end }}
+
+          {{ $labels := .observed.composite.resource.metadata.labels }}
+          {{ $region  := .observed.composite.resource.spec.region }}
+          {{ $subnets := .observed.composite.resource.spec.subnets }}
+          {{ $tags := .observed.composite.resource.spec.tags }}
+          {{ $types := list "public" "private" }}
+          {{ $zones := .observed.composite.resource.spec.subnets.zones }}
+          {{ $zoneLen := len $zones }}
+
+          {{ $dp := .observed.composite.resource.spec.deletionPolicy }}
+
+          {{ range $type := $types }}
+          {{ $cidrs := slice $subnets.cidrBlocks 0 $zoneLen }}
+          {{ if eq $type "private" }}
+          {{ $cidrs = slice $subnets.cidrBlocks $zoneLen (len $subnets.cidrBlocks) }}
+          {{ end }}
+
+          ---
+          apiVersion: xnetworks.crossplane.giantswarm.io/v1alpha1
+          kind: SubnetSet
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: {{ $type }}-subnets
+            labels:
+              {{range $key, $value := $labels }}
+              {{ $key }}: {{ $value }}
+              {{ end }}
+              visibility: {{ $type }}
+            name: {{ $appName }}-{{ $type }}
+          spec:
+            claimRef:
+            {{ range $key, $value := $claimRef }}
+              {{ $key }}: {{ $value }}
+            {{ end }}
+            deletionPolicy: {{ $dp }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-subnetset-{{ $type }}
+            region: {{ $region }}
+            subnets:
+              a:
+                zone: {{ index $zones 0 }}
+                cidrBlock: {{ index $cidrs 0 }}
+              b:
+                zone: {{ index $zones 1 }}
+                cidrBlock: {{ index $cidrs 1 }}
+              c:
+                zone: {{ index $zones 2 }}
+                cidrBlock: {{ index $cidrs 2 }}
+            type: {{ $type }}
+            tags:
+              {{ range $key, $value := $tags }}
+              {{ $key }}: {{ $value }}
+              {{ end }}
+          {{ end }}
+
+          # Create nat gateways and elastic ips
+          {{ $index := 0 }}
+
+          {{ $pubsubs := .observed.composite.resource.status.publicSubnets }}
+          {{ $pubrtbls := .observed.composite.resource.status.publicRouteTables }}
+          {{ $prirtbls := .observed.composite.resource.status.privateRouteTables }}
+          {{ $igwId := .observed.composite.resource.status.igwId }}
+
+          {{ range $k, $v := $zones }}
+          {{ $az := printf "%s%s" $region $v }}
+          {{ $pubsn := "" }}
+          {{ $prirtbl := "" }}
+          {{ $pubrtbl := "" }}
+
+          {{ if not (empty $pubsubs) }}
+          {{ if eq (len (keys $pubsubs)) $zoneLen }}
+          {{ $pubsn = get $pubsubs (index ( keys $pubsubs | sortAlpha ) $k) }}
+          {{ end }}
+          {{ end }}
+
+          {{ if not (empty $prirtbls) }}
+          {{ if eq (len ( keys $prirtbls )) $zoneLen }}
+          {{ $prirtbl = get $prirtbls (index ( keys $prirtbls | sortAlpha ) $k) }}
+          {{ end }}
+          {{ end }}
+
+          {{ if not (empty $pubrtbls) }}
+          {{ if eq (len (keys $pubrtbls )) $zoneLen }}
+          {{ $pubrtbl = get $pubrtbls (index ( keys $pubrtbls | sortAlpha ) $k) }}
+          {{ end }}
+          {{ end }}
+
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: EIP
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: eip-{{ $index }}
+            name: {{ $appName }}-ngw-{{ $az }}
+            labels:
+              availabilityZone: {{ $az }}
+              utilization: nat-gateway
+          spec:
+            forProvider:
+              region: {{ $region }}
+              domain: vpc
+              tags:
+                Name: {{ $appName }}-{{ $az }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-eip-{{ $v }}
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: NATGateway
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: nat-gateway-{{ $index }}
+            name: {{ $appName }}-{{ $az }}
+            labels:
+              availabilityZone: {{ $az }}
+          spec:
+            forProvider:
+              region: {{ $region }}
+              allocationIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: {{ $az }}
+              subnetId: {{ if not (empty $pubsn) }}{{ $pubsn }}{{ end }}
+              tags:
+                Name: {{ $appName }}-{{ $az }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-nat-gateway-{{ $az }}
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Route
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: ngw-route-{{ $index }}
+            name: {{ $appName }}-ngw-{{ $az }}
+            labels:
+              availabilityZone: {{ $az }}
+          spec:
+            forProvider:
+              destinationCidrBlock: 0.0.0.0/0
+              natGatewayIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: {{ $az }}
+              routeTableId: {{ if not (empty $prirtbl) }}{{ $prirtbl }}{{ end }}
+              region: {{ $region }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-ngw-route-{{ $az }}
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Route
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: igw-route-{{ $index }}
+            name: {{ $appName }}-igw-{{ $az }}
+            labels:
+              availabilityZone: {{ $az }}
+          spec:
+            forProvider:
+              destinationCidrBlock: 0.0.0.0/0
+              gatewayIdSelector:
+                matchControllerRef: true
+              routeTableId: {{ if not (empty $pubrtbl) }}{{ $pubrtbl }}{{ end }}
+              region: {{ $region }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-igw-route-{{ $az }}
+          {{ $index = add $index 1 }}
+          {{ end }}
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta2
+      environment: null
+      kind: Resources
+      patchSets:
+      - name: metadata
+        patches:
+        - fromFieldPath: metadata.labels
+          toFieldPath: metadata.labels
+          policy:
+            toFieldPath: MergeObject
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.region
+          toFieldPath: metadata.labels.region
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.deletionPolicy
+          toFieldPath: spec.deletionPolicy
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.providerConfigRef
+          toFieldPath: spec.providerConfigRef
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.claimRef.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+          type: FromCompositeFieldPath
+      - name: commontags
+        patches:
+        - fromFieldPath: spec.tags
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+          policy:
+            toFieldPath: MergeObject
+        - fromFieldPath: metadata.labels
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+          policy:
+            toFieldPath: MergeObject
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.tags.region
+      resources:
+      - name: basic-vpc
+        base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: VPC
+          spec:
+            forProvider:
+              enableDnsSupport: true
+        patches:
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.vpcCidr
+          toFieldPath: spec.forProvider.cidrBlock
+          type: FromCompositeFieldPath
+
+        - patchSetName: commontags
+          type: PatchSet
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.forProvider.tags.Name
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-%s'
+          toFieldPath: metadata.name
+          type: CombineFromComposite
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-vpc-%s'
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          type: CombineFromComposite
+
+        # patch vpcId
+        - toFieldPath: status.id
+          fromFieldPath: status.atProvider.id
+          type: ToCompositeFieldPath
+
+      - name: default-sg
+        base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: DefaultSecurityGroup
+          spec:
+            forProvider:
+              vpcIdSelector:
+                matchControllerRef: true
+              # These are deliberately empty as we want to ensure that the
+              # default security group blocks all traffic.
+              ingress: []
+              egress: []
+        patches:
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-%s'
+          toFieldPath: metadata.name
+          type: CombineFromComposite
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-default-sg-%s'
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          type: CombineFromComposite
+
+      - name: basic-igw
+        base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: InternetGateway
+          spec:
+            forProvider:
+              vpcIdSelector:
+                matchControllerRef: true
+        patches:
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
+        - patchSetName: commontags
+          type: PatchSet
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-%s-vpc'
+          toFieldPath: spec.forProvider.tags.Name
+          type: CombineFromComposite
+        - patchSetName: metadata
+          type: PatchSet
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-%s'
+          toFieldPath: metadata.name
+          type: CombineFromComposite
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-igw-%s'
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          type: CombineFromComposite
+        # patch igwId
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.internetGateway
+          type: ToCompositeFieldPath
+
+      - name: public-subnets
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: status.id
+          toFieldPath: spec.vpcId
+          type: FromCompositeFieldPath
+
+        - fromFieldPath: status.subnets.a
+          toFieldPath: status.publicSubnets.a
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.subnets.b
+          toFieldPath: status.publicSubnets.b
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.subnets.c
+          toFieldPath: status.publicSubnets.c
+          type: ToCompositeFieldPath
+
+        - fromFieldPath: status.routeTables.a
+          toFieldPath: status.publicRouteTables.a
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.routeTables.b
+          toFieldPath: status.publicRouteTables.b
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.routeTables.c
+          toFieldPath: status.publicRouteTables.c
+          type: ToCompositeFieldPath
+
+      - name: private-subnets
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: status.id
+          toFieldPath: spec.vpcId
+          type: FromCompositeFieldPath
+
+        - fromFieldPath: status.subnets.a
+          toFieldPath: status.privateSubnets.a
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.subnets.b
+          toFieldPath: status.privateSubnets.b
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.subnets.c
+          toFieldPath: status.privateSubnets.c
+          type: ToCompositeFieldPath
+
+        - fromFieldPath: status.routeTables.a
+          toFieldPath: status.privateRouteTables.a
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.routeTables.b
+          toFieldPath: status.privateRouteTables.b
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.routeTables.c
+          toFieldPath: status.privateRouteTables.c
+          type: ToCompositeFieldPath
+
+      # NGW EIPs
+      - name: eip-0
+        patches:
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+      - name: eip-1
+        patches:
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+      - name: eip-2
+        patches:
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+
+      # Nat Gateways
+      - name: nat-gateway-0
+        patches:
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.natGateways.a
+          type: ToCompositeFieldPath
+      - name: nat-gateway-1
+        patches:
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.natGateways.b
+          type: ToCompositeFieldPath
+      - name: nat-gateway-2
+        patches:
+        - patchSetName: commontags
+          type: PatchSet
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.natGateways.c
+          type: ToCompositeFieldPath
+
+      # NGW Routes
+      - name: ngw-route-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: ngw-route-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: ngw-route-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+      # IGW Routes
+      - name: igw-route-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: igw-route-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: igw-route-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet

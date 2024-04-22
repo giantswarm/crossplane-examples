@@ -1,0 +1,507 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  creationTimestamp: "2024-04-13T08:27:25Z"
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    app.kubernetes.io/name: postgres
+    component: postgres-vpc
+    provider: aws
+  name: aws-rds
+spec:
+  compositeTypeRef:
+    apiVersion: crossplane.giantswarm.io/v1alpha1
+    kind: CompositeRds
+  mode: Pipeline
+  pipeline:
+  - functionRef:
+      name: function-network-discovery
+    input:
+      apiVersion: networkdiscovery.fn.giantswarm.io/v1beta1
+      kind: Input
+      spec:
+        vpcRef: spec.remoteVpc.name
+        regionRef: spec.region
+        providerConfigRef: spec.providerConfigRef
+        patchTo: status.vpcs
+    step: function-network-discovery
+  - functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $appName := "" }}
+          # claimRef is a dict and may not be immediately available.
+          # As we're taking the name from this, we may need to wait until it's
+          # been populated by the controller.
+          {{ $claimRef := .observed.composite.resource.spec.claimRef }}
+          {{ if not ( empty $claimRef ) }}
+          {{ $appName = index $claimRef "name" }}
+          {{ end }}
+
+          {{ $region := .observed.composite.resource.spec.region }}
+          {{ $vpcCidr := .observed.composite.resource.spec.vpcCidr }}
+          {{ $remoteVpcName := .observed.composite.resource.spec.remoteVpc.name }}
+
+          {{ $self := dict }}
+          {{ $remoteVpc := dict }}
+
+          # Wait until the VPCs have been discovered before proceeding.
+          {{ if not ( empty .observed.composite.resource.status.vpcs ) }}
+          {{ $remoteVpc = index .observed.composite.resource.status.vpcs $remoteVpcName }}
+          {{ $self = index .observed.composite.resource.status.vpcs "self" }}
+          {{ end }}
+
+          {{ $vpcId := "" }}
+          {{ if not ( empty $self ) }}
+          {{ $vpcId = $self.id }}
+          {{ end }}
+          ---
+          apiVersion: rds.aws.upbound.io/v1beta1
+          kind: SubnetGroup
+          metadata:
+            name: {{ $appName }}-rds-subnet-group
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: rds-postgres-db-subnet-group
+          spec:
+            forProvider:
+              region: {{ $region }}
+              description: Subnet group for RDS DB
+              subnetIds:
+              {{ range $_, $v := $self.privateSubnets }}
+              - {{ $v }}
+              {{ end }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-rds-subnet-group
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroupRule
+          metadata:
+            name: {{ $appName }}-rds-access-rule-allow-inbound
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: rds-access-rule-allow-inbound
+          spec:
+            forProvider:
+              region: {{ $region }}
+              cidrBlocks:
+              - {{ $vpcCidr }}
+              - {{ if not ( empty $remoteVpc ) }}{{ $remoteVpc.cidrBlock }}{{ end }}
+              description: Allow database port from the cluster vpc
+              fromPort: {{ if .observed.composite.resource.status.port }}{{ .observed.composite.resource.status.port }}{{ end }}
+              protocol: tcp
+              securityGroupIdSelector:
+                matchControllerRef: true
+              toPort: {{ if .observed.composite.resource.status.port }}{{ .observed.composite.resource.status.port }}{{ end }}
+              type: ingress
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-rds-access-rule-allow-inbound
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: VPCPeeringConnection
+          metadata:
+            name: {{ $appName }}-peering-connection
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: vpc-peering-rds-to-cluster
+          spec:
+            forProvider:
+              region: {{ $region }}
+              autoAccept: true
+              tags:
+                Name: rds-to-cluster-peering-connection
+              vpcId: {{ if not (empty $vpcId) }}{{ $vpcId }}{{ end }}
+              peerVpcId: {{ if not ( empty $remoteVpc ) }}{{ $remoteVpc.id }}{{ end }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-peering-connection
+
+          {{ $zoneCount := len .observed.composite.resource.spec.subnets.zones }}
+          {{ $zones := .observed.composite.resource.spec.subnets.zones }}
+
+          {{ $sKeys := list }}
+          {{ if not ( empty $self.privateRouteTables ) }}
+          {{ if eq ( len $self.privateRouteTables ) $zoneCount }}
+          {{ $sKeys = keys $self.privateRouteTables | sortAlpha }}
+          {{ end }}
+          {{ end }}
+
+          {{ $rKeys := list }}
+          {{ if not ( empty $remoteVpc.privateRouteTables )}}
+          {{ if eq ( len $remoteVpc.privateRouteTables ) $zoneCount }}
+          {{ $rKeys = keys $remoteVpc.privateRouteTables | sortAlpha }}
+          {{ end }}
+          {{ end }}
+
+          # We can't directly iterate over the map as it will initially generate
+          # no output until the remote VPC is discovered causing the patch function
+          # to fail on the first iteration. Instead we iterate over the keys and
+          # use the keys to access the values in the map.
+
+          # By using Zones as an intermediary, we can ensure that the iteration
+          # will always be the correct length
+          {{ range $index, $zone := $zones }}
+          {{ $az := printf "%s%s" $region $zone }}
+
+          {{ $source := "" }}
+          {{ if not ( empty $sKeys ) }}
+          {{ $source = get $self.privateRouteTables (index $sKeys $index) }}
+          {{ end }}
+
+          {{ $remote := "" }}
+          {{ if not ( empty $rKeys ) }}
+          {{ $remote = get $remoteVpc.privateRouteTables (index $rKeys $index) }}
+          {{ end }}
+          ---
+          # Add self VPC cidr to remote route table
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          metadata:
+            name: {{ $appName }}-cluster-route-db-{{ $az }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: "cluster-route-db-{{ $index }}"
+          spec:
+            forProvider:
+              region: {{ $region }}
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+              destinationCidrBlock: {{ if not ( empty $vpcCidr ) }}{{ $vpcCidr }}{{ end }}
+              routeTableId: {{ if not ( empty $remote ) }}{{ $remote }}{{ end }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-cluster-route-db-{{ $az }}
+          ---
+          # Add remote VPC cidr to self route table
+          apiVersion: ec2.aws.upbound.io/v1beta2
+          kind: Route
+          metadata:
+            name: {{ $appName }}-db-route-cluster-{{ $az }}
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: "db-route-cluster-{{ $index }}"
+          spec:
+            forProvider:
+              region: {{ $region }}
+              vpcPeeringConnectionIdSelector:
+                matchControllerRef: true
+              destinationCidrBlock: {{ if not ( empty $remoteVpc ) }}{{ if not ( empty $remoteVpc.cidrBlock ) }}{{ $remoteVpc.cidrBlock }}{{ end }}{{ end }}
+              routeTableId: {{ if not ( empty $source ) }}{{ $source }}{{ end }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-db-route-cluster-{{ $az }}
+          {{ $index = add $index 1 }}
+          {{ end }}
+    step: create-vpc-peering
+  - functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta1
+      environment: null
+      kind: Resources
+      patchSets:
+      - name: metadata
+        patches:
+        - fromFieldPath: metadata.labels
+          policy:
+            toFieldPath: MergeObject
+          toFieldPath: metadata.labels
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.providerConfigRef
+          toFieldPath: spec.providerConfigRef.name
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.deletionPolicy
+          toFieldPath: spec.deletionPolicy
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.claimRef.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+          type: FromCompositeFieldPath
+      resources:
+      - name: vpc
+        base:
+          apiVersion: xnetworks.crossplane.giantswarm.io/v1alpha1
+          kind: VpcNetwork
+          spec: {}
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: spec.subnets
+          toFieldPath: spec.subnets
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: metadata.name
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.region
+          toFieldPath: spec.region
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.subnets.zones
+          toFieldPath: spec.subnets.zones
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.subnets.cidrBlocks
+          toFieldPath: spec.subnets.cidrBlocks
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.tags
+          toFieldPath: spec.tags
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.vpcCidr
+          toFieldPath: spec.vpcCidr
+          type: FromCompositeFieldPath
+        - fromFieldPath: status.id
+          toFieldPath: status.vpcs.self.id
+          type: ToCompositeFieldPath
+        - fromFieldPath: spec.claimRef
+          toFieldPath: spec.claimRef
+          type: FromCompositeFieldPath
+        - fromFieldPath: status.publicRouteTables
+          toFieldPath: status.vpcs.self.publicRouteTables
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.privateRouteTables
+          toFieldPath: status.vpcs.self.privateRouteTables
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.publicSubnets
+          toFieldPath: status.vpcs.self.publicSubnets
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.privateSubnets
+          toFieldPath: status.vpcs.self.privateSubnets
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.igwId
+          toFieldPath: status.vpcs.self.internetGateway
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.natGatewayIds
+          toFieldPath: status.vpcs.self.natGateways
+          type: ToCompositeFieldPath
+        - combine:
+            variables:
+            - fromFieldPath: spec.claimRef.name
+            - fromFieldPath: spec.region
+            strategy: string
+            string:
+              fmt: '%s-vpcnetwork-%s'
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          type: CombineFromComposite
+
+      # ------------------------------------------------------------------------------
+      # RDS Security group
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: SecurityGroup
+          spec:
+            forProvider:
+              description: Security group for postgresql database for backstage
+              name: rds-security-group-backstage
+        name: rds-access-security-group
+        patches:
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.tags.securityGroup
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.tags.common
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+          policy:
+            toFieldPath: MergeObject
+        - fromFieldPath: status.vpcs.self.id
+          toFieldPath: spec.forProvider.vpcId
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - string:
+              fmt: '%s-sg'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+
+      - name: rds-access-rule-allow-inbound
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - string:
+              fmt: '%s-sgrule'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+
+      # ------------------------------------------------------------------------------
+      # Postgres RDS Database Subnet Group
+      # ------------------------------------------------------------------------------
+      - name: rds-postgres-db-subnet-group
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+      # ------------------------------------------------------------------------------
+      # KMS key for encrypting database
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: kms.aws.upbound.io/v1beta1
+          kind: Key
+        name: rds-postgres-encryption-key
+        patches:
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.tags.kms
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+        - combine:
+            strategy: string
+            string:
+              fmt: '%s-%sa'
+            variables:
+            - fromFieldPath: spec.tags.kms.Name
+            - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.tags.Name
+          type: CombineFromComposite
+        - fromFieldPath: spec.tags.common
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - string:
+              fmt: '%s-kms'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+
+      # ------------------------------------------------------------------------------
+      # Postgres RDS instance
+      # ------------------------------------------------------------------------------
+      - base:
+          apiVersion: rds.aws.upbound.io/v1beta2
+          kind: Instance
+          spec:
+            forProvider:
+              autoMinorVersionUpgrade: true
+              backupRetentionPeriod: 0
+              copyTagsToSnapshot: true
+              instanceClass: db.t3.medium
+              dbSubnetGroupNameSelector:
+                matchControllerRef: true
+              deletionProtection: false
+              iamDatabaseAuthenticationEnabled: false
+              performanceInsightsEnabled: false
+              engine: postgres
+              kmsKeyIdSelector:
+                matchControllerRef: true
+              multiAz: false
+              passwordSecretRef: {}
+              backupWindow: 06:15-06:45
+              maintenanceWindow: sat:09:21-sat:09:51
+              publiclyAccessible: false
+              skipFinalSnapshot: true
+              storageEncrypted: true
+              storageType: gp2
+              vpcSecurityGroupIdSelector:
+                matchControllerRef: true
+        name: rds-postgres-db
+        patches:
+        - fromFieldPath: spec.db.name
+          toFieldPath: spec.forProvider.dbName
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.db.size
+          toFieldPath: spec.forProvider.allocatedStorage
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.db.instance
+          toFieldPath: spec.forProvider.instanceClass
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.db.version
+          toFieldPath: spec.forProvider.engineVersion
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.forProvider.finalSnapshotIdentifier
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.db.admin
+          toFieldPath: spec.forProvider.username
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.db.secret.key
+          toFieldPath: spec.forProvider.passwordSecretRef.key
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.db.secret.name
+          toFieldPath: spec.forProvider.passwordSecretRef.name
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.claimRef.namespace
+          toFieldPath: spec.forProvider.passwordSecretRef.namespace
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.region
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.tags.rds
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.tags.common
+          toFieldPath: spec.forProvider.tags
+          policy:
+            toFieldPath: MergeObject
+
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.availabilityZone
+          transforms:
+          - string:
+              fmt: '%sa'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+        - patchSetName: metadata
+          type: PatchSet
+        - fromFieldPath: spec.claimRef.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+          - string:
+              fmt: '%s-rds'
+              type: Format
+            type: string
+          type: FromCompositeFieldPath
+        - fromFieldPath: status.atProvider.address
+          toFieldPath: status.address
+          type: ToCompositeFieldPath
+        - fromFieldPath: status.atProvider.port
+          toFieldPath: status.port
+          type: ToCompositeFieldPath
+
+      # ------------------------------------------------------------------------------
+      # Peering Connection - RDS to Cluster
+      # ------------------------------------------------------------------------------
+      - name: vpc-peering-rds-to-cluster
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+      # ------------------------------------------------------------------------------
+      # Routes
+      # ------------------------------------------------------------------------------
+      - name: cluster-route-db-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: cluster-route-db-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: cluster-route-db-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+      - name: db-route-cluster-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: db-route-cluster-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+      - name: db-route-cluster-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+    step: patch-and-transform

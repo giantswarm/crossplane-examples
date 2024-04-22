@@ -1,0 +1,55 @@
+---
+apiVersion: crossplane.giantswarm.io/v1alpha1
+kind: RdsClaim
+metadata:
+  name: rds-postgres-db
+  namespace: default
+  labels:
+    owner: honeybadger
+spec:
+  name: myapp-postgres-db
+  labels:
+    provider: aws
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/instance: postgres-myapp
+    app.kubernetes.io/part-of: myapp
+    app.kubernetes.io/managed-by: crossplane
+
+  compositionSelector:
+    matchLabels:
+      provider: aws
+      component: postgres-vpc
+
+  region: eu-central-1
+  providerConfigRef: default
+  vpcCidr: 10.8.1.0/24
+  subnets:
+    zones:
+    - a
+    - b
+    - c
+    cidrBlocks:
+    - 10.8.1.0/27
+    - 10.8.1.32/27
+    - 10.8.1.64/27
+    - 10.8.1.96/27
+    - 10.8.1.128/27
+    - 10.8.1.160/27
+
+  db:
+    name: myapp
+    instance: db.t3.medium
+    size: 10
+    version: "14"
+    admin: giantswarm
+    secret:
+      name: aws-rds-db-pass
+      key: database-password
+
+  remoteVpc:
+    name: "myapp-basic-vpc"
+
+  tags:
+    giantswarm.io/owner: Honeybadger
+    giantswarm.io/managed-by: crossplane
+    giantswarm.io/part-of: myapp

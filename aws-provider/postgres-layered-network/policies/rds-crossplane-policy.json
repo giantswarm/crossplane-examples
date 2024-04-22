@@ -1,0 +1,112 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "VisualEditor0",
+            "Effect": "Allow",
+            "Action": [
+                "kms:EnableKey",
+                "kms:Decrypt",
+                "kms:UntagResource",
+                "secretsmanager:UntagResource",
+                "kms:PutKeyPolicy",
+                "secretsmanager:PutSecretValue",
+                "kms:GetKeyPolicy",
+                "secretsmanager:CreateSecret",
+                "secretsmanager:DeleteSecret",
+                "kms:ListResourceTags",
+                "kms:DisableKey",
+                "secretsmanager:UpdateSecret",
+                "iam:PassRole",
+                "kms:TagResource",
+                "iam:CreateServiceLinkedRole",
+                "kms:Encrypt",
+                "kms:GetKeyRotationStatus",
+                "kms:ScheduleKeyDeletion",
+                "kms:CreateAlias",
+                "secretsmanager:RotateSecret",
+                "kms:DescribeKey",
+                "kms:DeleteAlias",
+                "secretsmanager:TagResource"
+            ],
+            "Resource": [
+                "arn:aws:kms:*:${AWS_ACCOUNT_ID}:alias/*",
+                "arn:aws:kms:*:${AWS_ACCOUNT_ID}:key/*",
+                "arn:aws:secretsmanager:*:${AWS_ACCOUNT_ID}:secret:*",
+                "arn:aws:iam::${AWS_ACCOUNT_ID}:role/*"
+            ]
+        },
+        {
+            "Sid": "VisualEditor1",
+            "Effect": "Allow",
+            "Action": [
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:DeleteSubnet",
+                "ec2:AcceptVpcPeeringConnection",
+                "ec2:DeleteVpcPeeringConnection",
+                "ec2:AttachInternetGateway",
+                "rds:CreateOptionGroup",
+                "rds:CreateDBSubnetGroup",
+                "ec2:ReplaceRoute",
+                "ec2:DeleteRouteTable",
+                "ec2:RejectVpcPeeringConnection",
+                "ec2:DisassociateVpcCidrBlock",
+                "ec2:AssociateRouteTable",
+                "rds:Describe*",
+                "ec2:CreateRoute",
+                "ec2:RevokeSecurityGroupEgress",
+                "ec2:ModifyVpcPeeringConnectionOptions",
+                "rds:ModifyDBInstance",
+                "ec2:CreateVpcPeeringConnection",
+                "rds:DeleteDBInstance",
+                "rds:CreateDBParameterGroup",
+                "ec2:CreateTags",
+                "ec2:DeleteNetworkInterface",
+                "ec2:CreateRouteTable",
+                "ec2:ModifySecurityGroupRules",
+                "ec2:DisassociateRouteTable",
+                "ec2:RevokeSecurityGroupIngress",
+                "rds:DeleteDBSubnetGroup",
+                "rds:CreateDBSnapshot",
+                "kms:RevokeGrant",
+                "ec2:DeleteVpc",
+                "ec2:CreateSubnet",
+                "rds:RemoveTagsFromResource",
+                "ec2:DeleteTags",
+                "ec2:CreateVpc",
+                "rds:DeleteOptionGroup",
+                "rds:AddRoleToDBInstance",
+                "rds:CreateDBInstance",
+                "ec2:CreateSecurityGroup",
+                "kms:CreateKey",
+                "ec2:ModifyVpcAttribute",
+                "kms:CreateGrant",
+                "rds:AddTagsToResource",
+                "ec2:AuthorizeSecurityGroupEgress",
+                "ec2:DeleteRoute",
+                "ec2:DisassociateSubnetCidrBlock",
+                "kms:ListKeys",
+                "ec2:Describe*",
+                "rds:ListTagsForResource",
+                "ec2:DeleteSecurityGroup",
+                "kms:ListAliases",
+                "rds:ModifyDBSubnetGroup"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "VisualEditor2",
+            "Effect": "Allow",
+            "Action": "sts:AssumeRole",
+            "Resource": "*",
+            "Condition": {
+                "ForAnyValue:StringLike": {
+                    "aws:PrincipalArn": [
+                        "arn:aws:sts::${AWS_ACCOUNT_ID}:role/crossplane-assume-role",
+                        "arn:aws:sts::${AWS_ACCOUNT_ID}:assumed-role/rds-crossplane-role*"
+                    ]
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,234 @@
+---
+# Defines an RDS cluster for a standard 3 zone deployment
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xawsrds.crossplane.giantswarm.io
+spec:
+  connectionSecretKeys:
+    - kubeconfig
+  defaultCompositionRef:
+    name: aws-rds
+  group: crossplane.giantswarm.io
+  names:
+    kind: CompositeRds
+    plural: xawsrds
+  claimNames:
+    kind: RdsClaim
+    plural: rdsclaims
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                db:
+                  description: details for the database
+                  type: object
+                  properties:
+                    name:
+                      description: The name of the database to create
+                      type: string
+                    instance:
+                      description: The server size to build for the database
+                      type: string
+                    version:
+                      description: The version of postgresdb to install
+                      type: string
+                      default: "14"
+                      enum:
+                        - "11"
+                        - "12"
+                        - "13"
+                        - "14"
+                        - "15"
+                        - "16"
+                    size:
+                      description: The max storage size (in gi) of the database
+                      type: number
+                      default: 10
+
+                    admin:
+                      description: The administrator account name to create
+                      type: string
+
+                    secret:
+                      description: The prepopulated secret to use for the database
+                      type: object
+                      properties:
+                        name:
+                          description: The name of the secret to use. Must be in same namespace as claim
+                          type: string
+                        key:
+                          description: The key to select from inside the secret that will be used as the password
+                          type: string
+                          default: dbpass
+                      required:
+                        - name
+                  required:
+                    - instance
+                    - size
+                    - admin
+                    - secret
+                deletionPolicy:
+                  description: Set the reclaim policy type for resources
+                  type: string
+                  default: Delete
+                  enum:
+                    - Delete
+                    - Orphan
+                labels:
+                  description: A set of labels to apply to all resources
+                  type: object
+                  additionalProperties:
+                    type: string
+                name:
+                  description: Name of this instance that other objects will use to refer to it.
+                  type: string
+
+                providerConfigRef:
+                  description: The name of the provider config to use
+                  type: string
+
+                region:
+                  description: The region to build in
+                  type: string
+
+                remoteVpc:
+                  description: Details about the remote VPC that will be allowed to connect to this DB
+                  type: object
+                  properties:
+                    name:
+                      description: The name of the VPC containing the cluster
+                      type: string
+                  required:
+                    - name
+
+                subnets:
+                  description: CIDR ranges to use as subnets
+                  type: object
+                  properties:
+                    zones:
+                      description: The availability zones to build in (excluding region)
+                      type: array
+                      items:
+                        type: string
+                    cidrBlocks:
+                      description: |
+                        The CIDR blocks to use for the subnets.
+
+                        This block should consist of 6 subnets. The first 3 are used
+                        as the public subnet CIDRs and the last 3 are used for the
+                        private subnet CIDRs.
+                      type: array
+                      items:
+                        type: string
+                  required:
+                    - zones
+                    - cidrBlocks
+                tags:
+                  description: Tags to apply to different resources in the set
+                  type: object
+                  additionalProperties:
+                    type: string
+
+                vpcCidr:
+                  description: The CIDR range to give to the VPC
+                  type: string
+              required:
+                - db
+                - deletionPolicy
+                - labels
+                - name
+                - providerConfigRef
+                - region
+                - remoteVpc
+                - subnets
+                - tags
+                - vpcCidr
+            status:
+              type: object
+              properties:
+                address:
+                  description: The address of the database after creation
+                  type: string
+                port:
+                  description: The port of the database after creation
+                  type: integer
+                vpcs:
+                  type: object
+                  additionalProperties:
+                    description: Holds VPC information
+                    type: object
+                    properties:
+                      cidrBlock:
+                        description: The Ipv4 cidr block defined for this VPC
+                        type: string
+                      id:
+                        description: ID The VPC ID
+                        type: string
+                      internetGateway:
+                        description: The internet gateway defined in this VPC
+                        type: string
+                      natGateways:
+                        additionalProperties:
+                          type: string
+                        description: A map of NAT gateways defined in this VPC
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      privateRouteTables:
+                        additionalProperties:
+                          type: string
+                        description: A map of private route tables defined in this VPC
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      privateSubnets:
+                        additionalProperties:
+                          type: string
+                        description: A map of private subnets defined in this VPC
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      publicRouteTables:
+                        additionalProperties:
+                          type: string
+                        description: A map of public route tables defined in this VPC
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      publicSubnets:
+                        additionalProperties:
+                          type: string
+                        description: A map of public subnets defined in this VPC
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      securityGroups:
+                        additionalProperties:
+                          type: string
+                        description: A map of security groups defined in this VPC
+                        type: object
+                        x-kubernetes-map-type: atomic
+                      transitGateways:
+                        type: object
+                        additionalProperties:
+                          type: string
+                        description: A map of transit gateways defined in this VPC
+                        nullable: true
+                        x-kubernetes-map-type: atomic
+                      vpcPeeringConnections:
+                        additionalProperties:
+                          type: string
+                        description: A map of VPC peering connections defined in this VPC
+                        type: object
+                        nullable: true
+                        x-kubernetes-map-type: atomic
+      additionalPrinterColumns:
+        - name: address
+          type: string
+          jsonPath: ".status.address"
+        - name: port
+          type: integer
+          jsonPath: ".status.port"
