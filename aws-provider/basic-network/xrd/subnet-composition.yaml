@@ -1,0 +1,234 @@
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  creationTimestamp: "2024-04-13T08:27:25Z"
+  labels:
+    app.kubernetes.io/managed-by: crossplane
+    app.kubernetes.io/name: basic-network
+    component: network
+    provider: aws
+  name: subnetset
+spec:
+  compositeTypeRef:
+    apiVersion: xnetworks.crossplane.giantswarm.io/v1alpha1
+    kind: SubnetSet
+  mode: Pipeline
+  pipeline:
+  - step: create-subnets-from-template
+    functionRef:
+      name: function-go-templating
+    input:
+      apiVersion: gotemplating.fn.crossplane.io/v1beta1
+      kind: GoTemplate
+      source: Inline
+      inline:
+        template: |
+          {{ $appName := "" }}
+          {{ $claimRef := .observed.composite.resource.spec.claimRef }}
+          {{ if not ( empty $claimRef ) }}
+          {{ $appName = index $claimRef "name" }}
+          {{ end }}
+
+          {{ $appName := index $claimRef "name" }}
+          {{ $labels := .observed.composite.resource.metadata.labels }}
+          {{ $region  := .observed.composite.resource.spec.region }}
+          {{ $subnets := .observed.composite.resource.spec.subnets }}
+          {{ $type    := .observed.composite.resource.spec.type }}
+          {{ $vpcId   := .observed.composite.resource.spec.vpcId }}
+
+          {{ $public  := false }}
+          {{ if eq $type "public" }}
+          {{ $public = true }}
+          {{ end }}
+
+          {{ $index := 0 }}
+          {{ range $key, $value := $subnets }}
+          {{ $az := printf "%s%s" $region $value.zone }}
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTable
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: route-table-{{ $index }}
+            name: {{ $appName }}-{{ $type }}-{{ $az }}
+            labels:
+              access: {{ $type }}
+              availabilityZone: {{ $az }}
+          spec:
+            forProvider:
+              region: {{ $region }}
+              vpcId: {{ $vpcId }}
+              tags:
+                Name: {{ $appName }}-{{ $type }}-{{ $az }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-{{ $type }}-rt-{{ $type }}-{{ $az }}
+
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: Subnet
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: subnet-{{ $index }}
+            labels:
+              access: {{ $type }}
+              availabilityZone: {{ $az }}
+            name: {{ $appName }}-{{ $type }}-{{ $az }}
+          spec:
+            forProvider:
+              availabilityZone: {{ $az }}
+              cidrBlock: {{ $value.cidrBlock }}
+              mapPublicIpOnLaunch: {{ $public }}
+              region: {{ $region }}
+              vpcId: {{ $vpcId }}
+              tags:
+                Name: {{ $appName }}-{{ $type }}-{{ $az }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-{{ $type }}-sn-{{ $az }}
+          ---
+          apiVersion: ec2.aws.upbound.io/v1beta1
+          kind: RouteTableAssociation
+          metadata:
+            annotations:
+              gotemplating.fn.crossplane.io/composition-resource-name: route-table-assoc-{{ $index }}
+            labels:
+              availabilityZone: {{ $az }}
+            name: {{ $appName }}-{{ $type }}-{{ $az }}
+          spec:
+            forProvider:
+              region: {{ $region }}
+              routeTableIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: {{ $az }}
+              subnetIdSelector:
+                matchControllerRef: true
+                matchLabels:
+                  availabilityZone: {{ $az }}
+            writeConnectionSecretToRef:
+              name: {{ $appName }}-{{ $type }}-rta-{{ $az }}
+
+          {{ $index = add $index 1 }}
+          {{ end }}
+
+  - step: patch-and-transform
+    functionRef:
+      name: function-patch-and-transform
+    input:
+      apiVersion: pt.fn.crossplane.io/v1beta2
+      environment: null
+      kind: Resources
+
+      patchSets:
+      - name: metadata
+        patches:
+        - fromFieldPath: metadata.labels
+          toFieldPath: metadata.labels
+          policy:
+            toFieldPath: MergeObject
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.providerConfigRef
+          toFieldPath: spec.providerConfigRef
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.deletionPolicy
+          toFieldPath: spec.deletionPolicy
+          type: FromCompositeFieldPath
+        - fromFieldPath: spec.writeConnectionSecretToRef.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+          type: FromCompositeFieldPath
+      - name: commontags
+        patches:
+        - fromFieldPath: spec.tags
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+          policy:
+            toFieldPath: MergeObject
+        - fromFieldPath: metadata.labels
+          toFieldPath: spec.forProvider.tags
+          type: FromCompositeFieldPath
+          policy:
+            toFieldPath: MergeObject
+        - fromFieldPath: spec.region
+          toFieldPath: spec.forProvider.tags.region
+          type: FromCompositeFieldPath
+
+      resources:
+      - name: subnet-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - patchSetName: commontags
+          type: PatchSet
+
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.subnets.a
+          type: ToCompositeFieldPath
+
+      - name: subnet-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - patchSetName: commontags
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.subnets.b
+          type: ToCompositeFieldPath
+
+      - name: subnet-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - patchSetName: commontags
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.subnets.c
+          type: ToCompositeFieldPath
+
+      # ------------------------------------------------------------------------------
+      # Route Tables
+      # ------------------------------------------------------------------------------
+      - name: route-table-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - patchSetName: commontags
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.routeTables.a
+          type: ToCompositeFieldPath
+      - name: route-table-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - patchSetName: commontags
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.routeTables.b
+          type: ToCompositeFieldPath
+      - name: route-table-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+        - patchSetName: commontags
+          type: PatchSet
+        - fromFieldPath: status.atProvider.id
+          toFieldPath: status.routeTables.c
+          type: ToCompositeFieldPath
+
+      # ------------------------------------------------------------------------------
+      # Route Table Associations
+      # ------------------------------------------------------------------------------
+      - name: route-table-assoc-0
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+      - name: route-table-assoc-1
+        patches:
+        - patchSetName: metadata
+          type: PatchSet
+
+      - name: route-table-assoc-2
+        patches:
+        - patchSetName: metadata
+          type: PatchSet

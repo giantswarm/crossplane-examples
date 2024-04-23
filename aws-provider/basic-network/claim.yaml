@@ -1,0 +1,43 @@
+---
+apiVersion: xnetworks.crossplane.giantswarm.io/v1alpha1
+kind: VpcNetworkClaim
+metadata:
+  name: myapp-basic-vpc
+  namespace: default
+  labels:
+    owner: honeybadger
+    provider: aws
+    app.kubernetes.io/name: myapp
+    app.kubernetes.io/instance: myapp-network
+    app.kubernetes.io/part-of: myapp
+    app.kubernetes.io/managed-by: crossplane
+spec:
+  deletionPolicy: Delete
+
+  compositionSelector:
+    matchLabels:
+      provider: aws
+      component: network
+
+  region: eu-central-1
+  providerConfigRef:
+    name: default
+
+  vpcCidr: 10.8.0.0/24
+  subnets:
+    zones:
+    - a
+    - b
+    - c
+    cidrBlocks:
+    - 10.8.0.0/27
+    - 10.8.0.32/27
+    - 10.8.0.64/27
+    - 10.8.0.96/27
+    - 10.8.0.128/27
+    - 10.8.0.160/27
+
+  tags:
+    giantswarm.io/owner: honeybadger
+    giantswarm.io/managed-by: crossplane
+    giantswarm.io/part-of: myapp

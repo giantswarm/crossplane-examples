@@ -1,0 +1,5 @@
+resources:
+- subnet-definition.yaml
+- vpc-definition.yaml
+- subnet-composition.yaml
+- vpc-composition.yaml
