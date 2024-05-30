@@ -20,9 +20,15 @@ spec:
       provider: aws
       component: postgres-vpc
 
+  kubernetesProviderConfigRef: default
   region: eu-central-1
   providerConfigRef: default
   vpcCidr: 10.8.1.0/24
+
+  secretStore:
+    name: secretstore-sample
+    kind: ClusterSecretStore
+
   subnets:
     zones:
     - a
@@ -48,6 +54,7 @@ spec:
 
   remoteVpc:
     name: "myapp-basic-vpc"
+    enabled: true
 
   tags:
     giantswarm.io/owner: Honeybadger

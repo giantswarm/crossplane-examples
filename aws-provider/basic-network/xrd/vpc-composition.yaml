@@ -75,15 +75,12 @@ spec:
               {{ $key }}: {{ $value }}
               {{ end }}
               visibility: {{ $type }}
-            name: {{ $appName }}-{{ $type }}
           spec:
             claimRef:
             {{ range $key, $value := $claimRef }}
               {{ $key }}: {{ $value }}
             {{ end }}
             deletionPolicy: {{ $dp }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-subnetset-{{ $type }}
             region: {{ $region }}
             subnets:
               a:
@@ -146,7 +143,6 @@ spec:
           metadata:
             annotations:
               gotemplating.fn.crossplane.io/composition-resource-name: eip-{{ $index }}
-            name: {{ $appName }}-ngw-{{ $az }}
             labels:
               availabilityZone: {{ $az }}
               utilization: nat-gateway
@@ -156,15 +152,12 @@ spec:
               domain: vpc
               tags:
                 Name: {{ $appName }}-{{ $az }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-eip-{{ $v }}
           ---
           apiVersion: ec2.aws.upbound.io/v1beta1
           kind: NATGateway
           metadata:
             annotations:
               gotemplating.fn.crossplane.io/composition-resource-name: nat-gateway-{{ $index }}
-            name: {{ $appName }}-{{ $az }}
             labels:
               availabilityZone: {{ $az }}
           spec:
@@ -177,15 +170,12 @@ spec:
               subnetId: {{ if not (empty $pubsn) }}{{ $pubsn }}{{ end }}
               tags:
                 Name: {{ $appName }}-{{ $az }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-nat-gateway-{{ $az }}
           ---
           apiVersion: ec2.aws.upbound.io/v1beta1
           kind: Route
           metadata:
             annotations:
               gotemplating.fn.crossplane.io/composition-resource-name: ngw-route-{{ $index }}
-            name: {{ $appName }}-ngw-{{ $az }}
             labels:
               availabilityZone: {{ $az }}
           spec:
@@ -197,15 +187,12 @@ spec:
                   availabilityZone: {{ $az }}
               routeTableId: {{ if not (empty $prirtbl) }}{{ $prirtbl }}{{ end }}
               region: {{ $region }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-ngw-route-{{ $az }}
           ---
           apiVersion: ec2.aws.upbound.io/v1beta1
           kind: Route
           metadata:
             annotations:
               gotemplating.fn.crossplane.io/composition-resource-name: igw-route-{{ $index }}
-            name: {{ $appName }}-igw-{{ $az }}
             labels:
               availabilityZone: {{ $az }}
           spec:
@@ -215,8 +202,6 @@ spec:
                 matchControllerRef: true
               routeTableId: {{ if not (empty $pubrtbl) }}{{ $pubrtbl }}{{ end }}
               region: {{ $region }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-igw-route-{{ $az }}
           {{ $index = add $index 1 }}
           {{ end }}
   - step: patch-and-transform
@@ -242,9 +227,6 @@ spec:
           type: FromCompositeFieldPath
         - fromFieldPath: spec.providerConfigRef
           toFieldPath: spec.providerConfigRef
-          type: FromCompositeFieldPath
-        - fromFieldPath: spec.claimRef.namespace
-          toFieldPath: spec.writeConnectionSecretToRef.namespace
           type: FromCompositeFieldPath
       - name: commontags
         patches:
@@ -285,24 +267,6 @@ spec:
           type: FromCompositeFieldPath
         - patchSetName: metadata
           type: PatchSet
-        - combine:
-            variables:
-            - fromFieldPath: spec.claimRef.name
-            - fromFieldPath: spec.region
-            strategy: string
-            string:
-              fmt: '%s-%s'
-          toFieldPath: metadata.name
-          type: CombineFromComposite
-        - combine:
-            variables:
-            - fromFieldPath: spec.claimRef.name
-            - fromFieldPath: spec.region
-            strategy: string
-            string:
-              fmt: '%s-vpc-%s'
-          toFieldPath: spec.writeConnectionSecretToRef.name
-          type: CombineFromComposite
 
         # patch vpcId back to the XR status
         - toFieldPath: status.id
@@ -330,24 +294,6 @@ spec:
           type: PatchSet
         - patchSetName: metadata
           type: PatchSet
-        - combine:
-            variables:
-            - fromFieldPath: spec.claimRef.name
-            - fromFieldPath: spec.region
-            strategy: string
-            string:
-              fmt: '%s-%s'
-          toFieldPath: metadata.name
-          type: CombineFromComposite
-        - combine:
-            variables:
-            - fromFieldPath: spec.claimRef.name
-            - fromFieldPath: spec.region
-            strategy: string
-            string:
-              fmt: '%s-default-sg-%s'
-          toFieldPath: spec.writeConnectionSecretToRef.name
-          type: CombineFromComposite
 
       # Create the Internet Gateway
       - name: basic-igw
@@ -375,24 +321,6 @@ spec:
           type: CombineFromComposite
         - patchSetName: metadata
           type: PatchSet
-        - combine:
-            variables:
-            - fromFieldPath: spec.claimRef.name
-            - fromFieldPath: spec.region
-            strategy: string
-            string:
-              fmt: '%s-%s'
-          toFieldPath: metadata.name
-          type: CombineFromComposite
-        - combine:
-            variables:
-            - fromFieldPath: spec.claimRef.name
-            - fromFieldPath: spec.region
-            strategy: string
-            string:
-              fmt: '%s-igw-%s'
-          toFieldPath: spec.writeConnectionSecretToRef.name
-          type: CombineFromComposite
 
         # patch igwId back to the XR status
         - fromFieldPath: status.atProvider.id

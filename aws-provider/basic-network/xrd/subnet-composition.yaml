@@ -24,17 +24,21 @@ spec:
       source: Inline
       inline:
         template: |
-          {{ $appName := "" }}
+          {{ $appName  := "" }}
+          {{ $appIndex := .observed.composite.resource.spec.appIndex }}
           {{ $claimRef := .observed.composite.resource.spec.claimRef }}
+          {{ $type     := .observed.composite.resource.spec.type }}
           {{ if not ( empty $claimRef ) }}
           {{ $appName = index $claimRef "name" }}
+          {{ $appName = printf "%s-%s" $appName $type }}
+          {{ if ne $appIndex "" }}
+          {{ $appName = printf "%s-%s" $appName $appIndex }}
+          {{ end }}
           {{ end }}
 
-          {{ $appName := index $claimRef "name" }}
           {{ $labels := .observed.composite.resource.metadata.labels }}
           {{ $region  := .observed.composite.resource.spec.region }}
           {{ $subnets := .observed.composite.resource.spec.subnets }}
-          {{ $type    := .observed.composite.resource.spec.type }}
           {{ $vpcId   := .observed.composite.resource.spec.vpcId }}
 
           {{ $public  := false }}
@@ -51,7 +55,6 @@ spec:
           metadata:
             annotations:
               gotemplating.fn.crossplane.io/composition-resource-name: route-table-{{ $index }}
-            name: {{ $appName }}-{{ $type }}-{{ $az }}
             labels:
               access: {{ $type }}
               availabilityZone: {{ $az }}
@@ -61,8 +64,6 @@ spec:
               vpcId: {{ $vpcId }}
               tags:
                 Name: {{ $appName }}-{{ $type }}-{{ $az }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-{{ $type }}-rt-{{ $type }}-{{ $az }}
 
           ---
           apiVersion: ec2.aws.upbound.io/v1beta1
@@ -73,7 +74,6 @@ spec:
             labels:
               access: {{ $type }}
               availabilityZone: {{ $az }}
-            name: {{ $appName }}-{{ $type }}-{{ $az }}
           spec:
             forProvider:
               availabilityZone: {{ $az }}
@@ -83,8 +83,6 @@ spec:
               vpcId: {{ $vpcId }}
               tags:
                 Name: {{ $appName }}-{{ $type }}-{{ $az }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-{{ $type }}-sn-{{ $az }}
           ---
           apiVersion: ec2.aws.upbound.io/v1beta1
           kind: RouteTableAssociation
@@ -93,7 +91,6 @@ spec:
               gotemplating.fn.crossplane.io/composition-resource-name: route-table-assoc-{{ $index }}
             labels:
               availabilityZone: {{ $az }}
-            name: {{ $appName }}-{{ $type }}-{{ $az }}
           spec:
             forProvider:
               region: {{ $region }}
@@ -105,8 +102,6 @@ spec:
                 matchControllerRef: true
                 matchLabels:
                   availabilityZone: {{ $az }}
-            writeConnectionSecretToRef:
-              name: {{ $appName }}-{{ $type }}-rta-{{ $az }}
 
           {{ $index = add $index 1 }}
           {{ end }}
@@ -132,9 +127,6 @@ spec:
           type: FromCompositeFieldPath
         - fromFieldPath: spec.deletionPolicy
           toFieldPath: spec.deletionPolicy
-          type: FromCompositeFieldPath
-        - fromFieldPath: spec.writeConnectionSecretToRef.namespace
-          toFieldPath: spec.writeConnectionSecretToRef.namespace
           type: FromCompositeFieldPath
       - name: commontags
         patches:

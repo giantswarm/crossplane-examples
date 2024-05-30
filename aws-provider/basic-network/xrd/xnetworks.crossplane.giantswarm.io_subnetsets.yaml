@@ -30,6 +30,10 @@ spec:
         properties:
           spec:
             properties:
+              appIndex:
+                description: AppIndex is the index of the app.
+                type: string
+                default: ""
               deletionPolicy:
                 default: Delete
                 description: |-

@@ -44,6 +44,10 @@ Labels applied to the claim will also be merged in to the tags. This excludes
 any `kubernetes.io` tags - this seems to be a limitation of crossplane rather
 than a limitation of the composition.
 
+### Installation
+
+Apply all resources under the [xrd](./xrd) folder, then apply the claim.
+
 ```nohighlight
 $ crossplane beta trace vpcnetworkclaim myapp-basic-vpc
 

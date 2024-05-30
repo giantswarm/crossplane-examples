@@ -95,6 +95,10 @@ spec:
                   description: The name of the provider config to use
                   type: string
 
+                kubernetesProviderConfigRef:
+                  description: The name of the kubernetes config to use
+                  type: string
+
                 region:
                   description: The region to build in
                   type: string
@@ -106,8 +110,33 @@ spec:
                     name:
                       description: The name of the VPC containing the cluster
                       type: string
+                    enabled:
+                      description: Whether or not to enable the VPC peering connection
+                      type: boolean
+                      default: false
                   required:
                     - name
+
+                secretStore:
+                  description: The secret store to use for the database
+                  type: object
+                  properties:
+                    name:
+                      description: The name of the secret store to use
+                      type: string
+                    namespace:
+                      description: The namespace of the secret store to use
+                      type: string
+                    kind:
+                      description: The type of secret store to use
+                      type: string
+                      default: SecretStore
+                      enum:
+                        - SecretStore
+                        - ClusterSecretStore
+                  required:
+                    - name
+                    - kind
 
                 subnets:
                   description: CIDR ranges to use as subnets
@@ -148,6 +177,7 @@ spec:
                 - providerConfigRef
                 - region
                 - remoteVpc
+                - secretStore
                 - subnets
                 - tags
                 - vpcCidr
@@ -156,6 +186,9 @@ spec:
               properties:
                 address:
                   description: The address of the database after creation
+                  type: string
+                instanceName:
+                  description: The name of the RDS instance
                   type: string
                 port:
                   description: The port of the database after creation
@@ -169,6 +202,12 @@ spec:
                       cidrBlock:
                         description: The Ipv4 cidr block defined for this VPC
                         type: string
+                      additionalCidrBlocks:
+                        type: array
+                        items:
+                          type: string
+                        description: Additional CIDR blocks defined for this VPC
+                        x-kubernetes-list-type: atomic
                       id:
                         description: ID The VPC ID
                         type: string
@@ -181,30 +220,41 @@ spec:
                         description: A map of NAT gateways defined in this VPC
                         type: object
                         x-kubernetes-map-type: atomic
+                      region:
+                        description: The region this VPC is defined in
+                        type: string
                       privateRouteTables:
-                        additionalProperties:
-                          type: string
-                        description: A map of private route tables defined in this VPC
-                        type: object
-                        x-kubernetes-map-type: atomic
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties:
+                            type: string
+                          description: A map of private route tables defined in this VPC
+                        x-kubernetes-list-type: atomic
                       privateSubnets:
-                        additionalProperties:
-                          type: string
-                        description: A map of private subnets defined in this VPC
-                        type: object
-                        x-kubernetes-map-type: atomic
+                        type: array
+                        items:
+                          additionalProperties:
+                            type: string
+                          type: object
+                          description: A map of private subnets defined in this VPC
+                        x-kubernetes-list-type: atomic
                       publicRouteTables:
-                        additionalProperties:
-                          type: string
-                        description: A map of public route tables defined in this VPC
-                        type: object
-                        x-kubernetes-map-type: atomic
+                        type: array
+                        items:
+                          additionalProperties:
+                            type: string
+                          type: object
+                          description: A map of public route tables defined in this VPC
+                        x-kubernetes-list-type: atomic
                       publicSubnets:
-                        additionalProperties:
-                          type: string
-                        description: A map of public subnets defined in this VPC
-                        type: object
-                        x-kubernetes-map-type: atomic
+                        type: array
+                        items:
+                          additionalProperties:
+                            type: string
+                          description: A map of public subnets defined in this VPC
+                          type: object
+                        x-kubernetes-list-type: atomic
                       securityGroups:
                         additionalProperties:
                           type: string
