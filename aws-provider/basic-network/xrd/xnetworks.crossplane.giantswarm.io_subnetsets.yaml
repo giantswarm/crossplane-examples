@@ -31,9 +31,13 @@ spec:
           spec:
             properties:
               appIndex:
-                description: AppIndex is the index of the app.
+                description: |-
+                  AppIndex is the index of the application that the subnet is being created for.
+
+
+                  This is used for complex applications that require multiple subnet groupsr
+                  Normally leave this on the default.
                 type: string
-                default: ""
               deletionPolicy:
                 default: Delete
                 description: |-
@@ -254,10 +258,24 @@ spec:
                 - c
                 type: object
               tags:
-                additionalProperties:
-                  type: string
-                description: Tags is a map of tags to assign to the VPC.
-                maxProperties: 50
+                description: Tags is a set of tags to apply to resources in the subnetset
+                properties:
+                  all:
+                    additionalProperties:
+                      type: string
+                    description: All is a map of tags to apply to all resources in
+                      the subnetset.
+                    maxProperties: 50
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  subnet:
+                    additionalProperties:
+                      type: string
+                    description: Subnet is a map of tags to apply only to the subnet
+                      resources
+                    maxProperties: 50
+                    type: object
+                    x-kubernetes-map-type: atomic
                 type: object
                 x-kubernetes-map-type: atomic
               type:
@@ -345,26 +363,51 @@ spec:
                     description: RouteTableA is the route table ID for availability
                       zone A.
                     type: string
+                  aName:
+                    description: RouteTableAName is the name of the route table in
+                      availability zone A.
+                    type: string
                   b:
                     description: RouteTableB is the route table ID for availability
                       zone B.
+                    type: string
+                  bName:
+                    description: RouteTableBName is the name of the route table in
+                      availability zone B.
                     type: string
                   c:
                     description: RouteTableC is the route table ID for availability
                       zone C.
                     type: string
+                  cName:
+                    description: RouteTableCName is the name of the route table in
+                      availability zone C.
+                    type: string
                 type: object
                 x-kubernetes-map-type: atomic
               subnets:
+                description: Subnets is a map of subnets discovered by the composite.
                 properties:
                   a:
                     description: SubnetA is the subnet ID in availability zone A.
                     type: string
+                  aName:
+                    description: SubnetAName is the name of the subnet in availability
+                      zone A.
+                    type: string
                   b:
                     description: SubnetB is subnet ID in availability zone B.
                     type: string
+                  bName:
+                    description: SubnetBName is the name of the subnet in availability
+                      zone B.
+                    type: string
                   c:
                     description: SubnetC is the subnet ID in availability zone C.
+                    type: string
+                  cName:
+                    description: SubnetCName is the name of the subnet in availability
+                      zone C.
                     type: string
                 type: object
                 x-kubernetes-map-type: atomic

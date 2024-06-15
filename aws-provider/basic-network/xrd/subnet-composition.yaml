@@ -30,8 +30,7 @@ spec:
           {{ $type     := .observed.composite.resource.spec.type }}
           {{ if not ( empty $claimRef ) }}
           {{ $appName = index $claimRef "name" }}
-          {{ $appName = printf "%s-%s" $appName $type }}
-          {{ if ne $appIndex "" }}
+          {{ if not (empty $appIndex) }}
           {{ $appName = printf "%s-%s" $appName $appIndex }}
           {{ end }}
           {{ end }}
@@ -40,6 +39,7 @@ spec:
           {{ $region  := .observed.composite.resource.spec.region }}
           {{ $subnets := .observed.composite.resource.spec.subnets }}
           {{ $vpcId   := .observed.composite.resource.spec.vpcId }}
+          {{ $tags := .observed.composite.resource.spec.tags }}
 
           {{ $public  := false }}
           {{ if eq $type "public" }}
@@ -83,6 +83,9 @@ spec:
               vpcId: {{ $vpcId }}
               tags:
                 Name: {{ $appName }}-{{ $type }}-{{ $az }}
+                {{ range $k, $v := $tags.subnet }}
+                {{ $k }}: {{ $v | quote }}
+                {{ end }}
           ---
           apiVersion: ec2.aws.upbound.io/v1beta1
           kind: RouteTableAssociation
@@ -130,7 +133,7 @@ spec:
           type: FromCompositeFieldPath
       - name: commontags
         patches:
-        - fromFieldPath: spec.tags
+        - fromFieldPath: spec.tags.all
           toFieldPath: spec.forProvider.tags
           type: FromCompositeFieldPath
           policy:
@@ -156,6 +159,10 @@ spec:
           toFieldPath: status.subnets.a
           type: ToCompositeFieldPath
 
+        - fromFieldPath: status.atProvider.tags.Name
+          toFieldPath: status.subnets.aName
+          type: ToCompositeFieldPath
+
       - name: subnet-1
         patches:
         - patchSetName: metadata
@@ -164,6 +171,10 @@ spec:
           type: PatchSet
         - fromFieldPath: status.atProvider.id
           toFieldPath: status.subnets.b
+          type: ToCompositeFieldPath
+
+        - fromFieldPath: status.atProvider.tags.Name
+          toFieldPath: status.subnets.bName
           type: ToCompositeFieldPath
 
       - name: subnet-2
@@ -176,6 +187,10 @@ spec:
           toFieldPath: status.subnets.c
           type: ToCompositeFieldPath
 
+        - fromFieldPath: status.atProvider.tags.Name
+          toFieldPath: status.subnets.cName
+          type: ToCompositeFieldPath
+
       # ------------------------------------------------------------------------------
       # Route Tables
       # ------------------------------------------------------------------------------
@@ -185,26 +200,43 @@ spec:
           type: PatchSet
         - patchSetName: commontags
           type: PatchSet
+
         - fromFieldPath: status.atProvider.id
           toFieldPath: status.routeTables.a
           type: ToCompositeFieldPath
+
+        - fromFieldPath: status.atProvider.tags.Name
+          toFieldPath: status.routeTables.aName
+          type: ToCompositeFieldPath
+
       - name: route-table-1
         patches:
         - patchSetName: metadata
           type: PatchSet
         - patchSetName: commontags
           type: PatchSet
+
         - fromFieldPath: status.atProvider.id
           toFieldPath: status.routeTables.b
           type: ToCompositeFieldPath
+
+        - fromFieldPath: status.atProvider.tags.Name
+          toFieldPath: status.routeTables.bName
+          type: ToCompositeFieldPath
+
       - name: route-table-2
         patches:
         - patchSetName: metadata
           type: PatchSet
         - patchSetName: commontags
           type: PatchSet
+
         - fromFieldPath: status.atProvider.id
           toFieldPath: status.routeTables.c
+          type: ToCompositeFieldPath
+
+        - fromFieldPath: status.atProvider.tags.Name
+          toFieldPath: status.routeTables.cName
           type: ToCompositeFieldPath
 
       # ------------------------------------------------------------------------------

@@ -94,9 +94,10 @@ spec:
                 cidrBlock: {{ index $cidrs 2 }}
             type: {{ $type }}
             tags:
-              {{ range $key, $value := $tags }}
-              {{ $key }}: {{ $value }}
-              {{ end }}
+              all:
+                {{ range $key, $value := $tags }}
+                {{ $key }}: {{ $value }}
+                {{ end }}
           {{ end }}
 
           #
